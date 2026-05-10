@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Realtime Translation Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OpenAI Realtime Translation</p>
+          <h1>Realtime Translation Dashboard</h1>
+        </div>
+        <div class="topbar-actions" aria-label="Session actions">
+          <div class="status-pill" id="connectionStatus" data-state="idle">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="statusLabel">Idle</span>
+          </div>
+          <button class="button secondary" id="demoButton" type="button">Demo</button>
+          <button class="button primary" id="startButton" type="button">Start</button>
+          <button class="button danger" id="stopButton" type="button" disabled>Stop</button>
+        </div>
+      </header>
+
+      <main class="dashboard-grid">
+        <section class="panel controls-panel" aria-labelledby="controlsTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Control Room</p>
+              <h2 id="controlsTitle">入力と翻訳先</h2>
+            </div>
+            <span class="small-badge" id="apiKeyBadge">Checking</span>
+          </div>
+
+          <fieldset class="segmented" aria-label="Audio source">
+            <legend>Audio Source</legend>
+            <label>
+              <input type="radio" name="sourceMode" value="tab" checked />
+              <span>Tab</span>
+            </label>
+            <label>
+              <input type="radio" name="sourceMode" value="mic" />
+              <span>Mic</span>
+            </label>
+          </fieldset>
+
+          <label class="field">
+            <span>Target Language</span>
+            <select id="targetLanguage"></select>
+          </label>
+
+          <div class="language-strip" id="languageStrip" aria-label="Supported target languages"></div>
+
+          <div class="control-row">
+            <label class="toggle">
+              <input type="checkbox" id="inputTranscription" checked />
+              <span>Input Transcript</span>
+            </label>
+            <label class="field compact">
+              <span>Noise</span>
+              <select id="noiseReduction">
+                <option value="near_field">Near field</option>
+                <option value="far_field">Far field</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="slider-block">
+            <label for="translatedVolume">
+              <span>Translated</span>
+              <strong id="translatedVolumeValue">85%</strong>
+            </label>
+            <input id="translatedVolume" type="range" min="0" max="100" value="85" />
+          </div>
+
+          <div class="slider-block">
+            <label for="originalVolume">
+              <span>Original</span>
+              <strong id="originalVolumeValue">15%</strong>
+            </label>
+            <input id="originalVolume" type="range" min="0" max="100" value="15" />
+          </div>
+
+          <div class="button-row">
+            <button class="button ghost" id="clearButton" type="button">Clear</button>
+            <button class="button ghost" id="copyButton" type="button">Copy</button>
+            <button class="button ghost" id="downloadButton" type="button">Export</button>
+          </div>
+
+          <div class="system-note" id="systemNote" role="status">
+            準備中
+          </div>
+        </section>
+
+        <section class="panel stage-panel" aria-labelledby="stageTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Live Signal</p>
+              <h2 id="stageTitle">通訳ステージ</h2>
+            </div>
+            <span class="small-badge" id="targetBadge">JA</span>
+          </div>
+
+          <div class="signal-frame">
+            <canvas id="signalCanvas" width="980" height="340" aria-label="Audio signal monitor"></canvas>
+            <div class="signal-overlay">
+              <span id="signalLabel">Waiting for stream</span>
+              <span id="sessionClock">00:00</span>
+            </div>
+          </div>
+
+          <div class="preview-grid">
+            <div class="preview-block">
+              <div class="block-heading">
+                <span>Source Preview</span>
+                <strong id="sourceKind">Tab</strong>
+              </div>
+              <video id="sourceVideo" muted playsinline></video>
+              <div class="preview-placeholder" id="sourcePlaceholder">No visual source</div>
+            </div>
+            <div class="preview-block">
+              <div class="block-heading">
+                <span>Output Audio</span>
+                <strong id="audioState">Muted</strong>
+              </div>
+              <div class="audio-meter" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <audio id="translatedAudio" autoplay></audio>
+              <audio id="originalAudio" autoplay muted></audio>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel transcript-panel" aria-labelledby="transcriptTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Subtitles</p>
+              <h2 id="transcriptTitle">ライブ字幕</h2>
+            </div>
+            <label class="toggle tight">
+              <input type="checkbox" id="showFinalOnly" />
+              <span>Final only</span>
+            </label>
+          </div>
+
+          <div class="transcript-grid">
+            <article class="transcript-column" aria-labelledby="sourceTranscriptTitle">
+              <div class="block-heading">
+                <span id="sourceTranscriptTitle">Source</span>
+                <strong id="sourceChars">0 chars</strong>
+              </div>
+              <p class="live-caption" id="sourceLive"></p>
+              <div class="history-list" id="sourceHistory"></div>
+            </article>
+
+            <article class="transcript-column translated-column" aria-labelledby="translatedTranscriptTitle">
+              <div class="block-heading">
+                <span id="translatedTranscriptTitle">Translated</span>
+                <strong id="translatedChars">0 chars</strong>
+              </div>
+              <p class="live-caption" id="translatedLive"></p>
+              <div class="history-list" id="translatedHistory"></div>
+            </article>
+          </div>
+        </section>
+
+        <aside class="panel telemetry-panel" aria-labelledby="telemetryTitle">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Telemetry</p>
+              <h2 id="telemetryTitle">セッション計測</h2>
+            </div>
+            <span class="small-badge" id="modelBadge">model</span>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric-tile">
+              <span>WebRTC</span>
+              <strong id="webrtcState">new</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Events</span>
+              <strong id="eventCount">0</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Latency</span>
+              <strong id="latencyEstimate">--</strong>
+            </div>
+            <div class="metric-tile">
+              <span>Output</span>
+              <strong id="outputRate">0 wpm</strong>
+            </div>
+          </div>
+
+          <div class="event-log" id="eventLog" aria-live="polite"></div>
+
+          <div class="checklist" aria-label="Production checklist">
+            <div>
+              <span class="check-dot good" aria-hidden="true"></span>
+              <span>Server-side API key</span>
+            </div>
+            <div>
+              <span class="check-dot good" aria-hidden="true"></span>
+              <span>Short-lived client secret</span>
+            </div>
+            <div>
+              <span class="check-dot warn" aria-hidden="true"></span>
+              <span>Browser permission required</span>
+            </div>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

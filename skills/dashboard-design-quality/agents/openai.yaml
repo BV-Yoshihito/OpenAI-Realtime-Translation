@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dashboard Design Quality"
+  short_description: "デジタル庁指針でダッシュボードの設計品質を改善する"
+  default_prompt: "Use $dashboard-design-quality to review and improve a dashboard design against Digital Agency guidance."
