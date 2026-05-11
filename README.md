@@ -19,6 +19,12 @@ Open the URL printed by the server. If `OPENAI_API_KEY` is not set, the dashboar
 - Tab audio capture via `getDisplayMedia()` and microphone capture via `getUserMedia()`.
 - Input and output transcript delta handling over the `oai-events` data channel.
 - Target-language selection, near-field noise reduction, input transcription, audio mix, event log, metrics, transcript export, and a local visual signal monitor.
+- Meeting mode with a meeting title, Mic-first setup, paired source/translated timeline, segment counts, and export-ready meeting notes.
+- Subtitle export as TXT, Markdown, SRT, WebVTT, or JSON.
+
+## Meeting Mode
+
+Select `Meeting`, set the meeting title, choose the target language, then press `Start` or `Demo`. Meeting mode keeps a paired timeline of source and translated text. `Export Format` controls whether `Copy` and `Export` produce TXT, Markdown, SRT, WebVTT, or JSON.
 
 ## Validation
 

@@ -302,7 +302,8 @@ button {
   width: 100%;
 }
 
-select {
+select,
+input[type="text"] {
   min-height: 40px;
   padding: 0 10px;
   border: 1px solid var(--border-strong);
@@ -310,6 +311,18 @@ select {
   background: #fff;
   color: var(--ink);
   font-weight: 700;
+}
+
+input[type="text"] {
+  min-width: 0;
+}
+
+.mode-segmented {
+  margin-top: -6px;
+}
+
+.export-field {
+  margin-top: 14px;
 }
 
 .language-strip {
@@ -578,6 +591,96 @@ input[type="range"] {
   font-weight: 760;
 }
 
+.meeting-summary {
+  display: none;
+  grid-template-columns: 0.6fr 1.4fr 0.6fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.meeting-summary div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.meeting-summary span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.meeting-summary strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meeting-feed {
+  display: none;
+  gap: 8px;
+  max-height: 260px;
+  margin-bottom: 12px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.meeting-item {
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.meeting-item-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.meeting-source,
+.meeting-translated {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.meeting-source {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.meeting-translated {
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 720;
+}
+
+body[data-mode="meeting"] .meeting-summary,
+body[data-mode="meeting"] .meeting-feed {
+  display: grid;
+}
+
+body[data-mode="meeting"] .transcript-column {
+  min-height: 260px;
+}
+
+body[data-mode="meeting"] .live-caption {
+  min-height: 70px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -724,7 +827,8 @@ input[type="range"] {
 
   .preview-grid,
   .transcript-grid,
-  .telemetry-panel {
+  .telemetry-panel,
+  .meeting-summary {
     grid-template-columns: 1fr;
   }
 

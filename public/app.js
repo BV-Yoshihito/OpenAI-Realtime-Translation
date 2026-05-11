@@ -13,15 +13,22 @@ const elements = {
   downloadButton: document.querySelector("#downloadButton"),
   eventCount: document.querySelector("#eventCount"),
   eventLog: document.querySelector("#eventLog"),
+  exportFormat: document.querySelector("#exportFormat"),
   inputTranscription: document.querySelector("#inputTranscription"),
   languageStrip: document.querySelector("#languageStrip"),
   latencyEstimate: document.querySelector("#latencyEstimate"),
+  meetingFeed: document.querySelector("#meetingFeed"),
+  meetingSummary: document.querySelector("#meetingSummary"),
+  meetingTitle: document.querySelector("#meetingTitle"),
+  meetingTitleBadge: document.querySelector("#meetingTitleBadge"),
+  modeBadge: document.querySelector("#modeBadge"),
   modelBadge: document.querySelector("#modelBadge"),
   noiseReduction: document.querySelector("#noiseReduction"),
   originalAudio: document.querySelector("#originalAudio"),
   originalVolume: document.querySelector("#originalVolume"),
   originalVolumeValue: document.querySelector("#originalVolumeValue"),
   outputRate: document.querySelector("#outputRate"),
+  segmentCount: document.querySelector("#segmentCount"),
   sessionClock: document.querySelector("#sessionClock"),
   showFinalOnly: document.querySelector("#showFinalOnly"),
   signalCanvas: document.querySelector("#signalCanvas"),
@@ -53,6 +60,7 @@ const state = {
   dataChannel: null,
   sourceStream: null,
   startedAt: null,
+  elapsedSeconds: 0,
   clockTimer: null,
   demoTimers: [],
   analyser: null,
@@ -61,10 +69,13 @@ const state = {
   isRunning: false,
   isDemo: false,
   demoVoice: null,
+  sessionMode: "dashboard",
+  nextSegmentId: 1,
   currentSource: "",
   currentTranslated: "",
   fullSource: [],
   fullTranslated: [],
+  segments: [],
   metrics: {
     events: 0,
     inputChars: 0,
@@ -90,6 +101,7 @@ init().catch((error) => {
 
 async function init() {
   bindControls();
+  restorePreferences();
   updateVolumes();
   startSignalLoop();
   await loadConfig();
@@ -105,6 +117,10 @@ function bindControls() {
   elements.clearButton.addEventListener("click", resetTranscripts);
   elements.copyButton.addEventListener("click", copyTranscripts);
   elements.downloadButton.addEventListener("click", downloadTranscripts);
+  elements.meetingTitle.addEventListener("input", () => {
+    localStorage.setItem("translation.meetingTitle", currentMeetingTitle());
+    updateMeetingMeta();
+  });
   elements.showFinalOnly.addEventListener("change", renderLiveCaptions);
   elements.targetLanguage.addEventListener("change", () => {
     const code = elements.targetLanguage.value;
@@ -115,11 +131,76 @@ function bindControls() {
   elements.translatedVolume.addEventListener("input", updateVolumes);
   elements.originalVolume.addEventListener("input", updateVolumes);
   window.speechSynthesis?.addEventListener("voiceschanged", selectDemoVoice);
+  document.querySelectorAll("input[name='sessionMode']").forEach((input) => {
+    input.addEventListener("change", () => updateSessionMode({ persist: true, announce: true }));
+  });
   document.querySelectorAll("input[name='sourceMode']").forEach((input) => {
     input.addEventListener("change", () => {
       elements.sourceKind.textContent = selectedSourceMode() === "tab" ? "Tab" : "Mic";
     });
   });
+}
+
+function restorePreferences() {
+  const savedMode = localStorage.getItem("translation.sessionMode") || "dashboard";
+  const modeInput = document.querySelector(`input[name='sessionMode'][value='${savedMode}']`);
+  if (modeInput) {
+    modeInput.checked = true;
+  }
+
+  elements.meetingTitle.value = localStorage.getItem("translation.meetingTitle") || "Realtime Meeting";
+  updateSessionMode({ persist: false, announce: false });
+  updateMeetingMeta();
+}
+
+function updateSessionMode({ persist = true, announce = false } = {}) {
+  state.sessionMode = selectedSessionMode();
+  document.body.dataset.mode = state.sessionMode;
+  elements.modeBadge.textContent = state.sessionMode === "meeting" ? "Meeting" : "Dashboard";
+
+  if (persist) {
+    localStorage.setItem("translation.sessionMode", state.sessionMode);
+  }
+
+  if (state.sessionMode === "meeting" && !state.isRunning) {
+    setSourceMode("mic");
+    if (elements.exportFormat.value === "txt") {
+      elements.exportFormat.value = "md";
+    }
+  }
+
+  renderMeetingFeed();
+  updateMeetingMeta();
+
+  if (announce) {
+    writeNote(
+      state.sessionMode === "meeting"
+        ? "会議モードです。Mic入力を優先し、字幕を会議ログとしてペア表示・エクスポートできます。"
+        : "Dashboardモードです。タブ音声やマイク翻訳を俯瞰しながら確認できます。"
+    );
+  }
+}
+
+function selectedSessionMode() {
+  return document.querySelector("input[name='sessionMode']:checked")?.value || "dashboard";
+}
+
+function setSourceMode(value) {
+  const input = document.querySelector(`input[name='sourceMode'][value='${value}']`);
+  if (!input) {
+    return;
+  }
+  input.checked = true;
+  elements.sourceKind.textContent = value === "tab" ? "Tab" : "Mic";
+}
+
+function currentMeetingTitle() {
+  return elements.meetingTitle.value.trim() || "Realtime Meeting";
+}
+
+function updateMeetingMeta() {
+  elements.meetingTitleBadge.textContent = currentMeetingTitle();
+  elements.segmentCount.textContent = String(state.segments.length);
 }
 
 async function loadConfig() {
@@ -177,8 +258,13 @@ async function startSession() {
   resetRuntime();
   setRunningUi(true);
   setStatus("connecting", "Connecting");
+  updateMeetingMeta();
   writeNote("音声入力の許可を待っています。");
-  logEvent("session.start", `${selectedSourceMode()} -> ${elements.targetLanguage.value}`, "good");
+  logEvent(
+    "session.start",
+    `${state.sessionMode} / ${selectedSourceMode()} -> ${elements.targetLanguage.value}`,
+    "good"
+  );
 
   try {
     let sourceStream;
@@ -201,6 +287,7 @@ async function startSession() {
 
     await openWebRtcCall({ sourceStream, clientSecret });
     state.isRunning = true;
+    state.elapsedSeconds = 0;
     state.startedAt = Date.now();
     state.metrics.connectionAt = Date.now();
     state.clockTimer = setInterval(updateClockAndRates, 1000);
@@ -439,17 +526,54 @@ function finalizeTranscript(kind, overrideText = "") {
     return;
   }
 
+  const segment = createTranscriptSegment(kind, text);
+
   if (kind === "source") {
-    state.fullSource.unshift({ text, at: new Date() });
+    state.fullSource.unshift(segment);
     state.currentSource = "";
   } else {
-    state.fullTranslated.unshift({ text, at: new Date() });
+    state.fullTranslated.unshift(segment);
     state.currentTranslated = "";
   }
 
+  state.segments.push(segment);
   trimHistory();
   renderLiveCaptions();
   renderHistory();
+  renderMeetingFeed();
+  updateMeetingMeta();
+}
+
+function createTranscriptSegment(kind, text) {
+  const endSeconds = Math.max(currentElapsedSeconds(), lastSegmentEnd(kind) + 0.1);
+  const estimatedDuration = estimateSubtitleDuration(text);
+  const startSeconds = Math.max(0, Math.max(lastSegmentEnd(kind) + 0.1, endSeconds - estimatedDuration));
+
+  return {
+    id: state.nextSegmentId++,
+    kind,
+    text,
+    at: new Date(),
+    startSeconds,
+    endSeconds: Math.max(endSeconds, startSeconds + 1.2)
+  };
+}
+
+function lastSegmentEnd(kind) {
+  const segments = state.segments.filter((segment) => segment.kind === kind);
+  return segments.length ? segments[segments.length - 1].endSeconds : 0;
+}
+
+function estimateSubtitleDuration(text) {
+  const words = Math.max(1, countWords(text));
+  return Math.min(12, Math.max(1.8, words / 2.7));
+}
+
+function currentElapsedSeconds() {
+  if (!state.startedAt) {
+    return state.elapsedSeconds || 0;
+  }
+  return Math.max(state.elapsedSeconds || 0, (Date.now() - state.startedAt) / 1000);
 }
 
 function shouldFlush(text) {
@@ -468,6 +592,7 @@ function renderLiveCaptions() {
 function renderHistory() {
   renderHistoryList(elements.sourceHistory, state.fullSource);
   renderHistoryList(elements.translatedHistory, state.fullTranslated);
+  renderMeetingFeed();
 }
 
 function renderHistoryList(container, items) {
@@ -488,6 +613,73 @@ function renderHistoryList(container, items) {
 function trimHistory() {
   state.fullSource = state.fullSource.slice(0, MAX_HISTORY_ITEMS);
   state.fullTranslated = state.fullTranslated.slice(0, MAX_HISTORY_ITEMS);
+}
+
+function renderMeetingFeed() {
+  const pairs = buildTranscriptPairs().slice(-10).reverse();
+  elements.meetingFeed.replaceChildren();
+
+  for (const pair of pairs) {
+    const node = document.createElement("article");
+    node.className = "meeting-item";
+
+    const heading = document.createElement("div");
+    heading.className = "meeting-item-heading";
+    const time = document.createElement("time");
+    time.dateTime = pair.at.toISOString();
+    time.textContent = formatTimelineTime(pair.startSeconds);
+    const label = document.createElement("span");
+    label.textContent = `Segment ${pair.index}`;
+    heading.append(time, label);
+
+    const source = document.createElement("p");
+    source.className = "meeting-source";
+    source.textContent = pair.source?.text || "";
+
+    const translated = document.createElement("p");
+    translated.className = "meeting-translated";
+    translated.textContent = pair.translated?.text || "";
+
+    node.append(heading, source, translated);
+    elements.meetingFeed.append(node);
+  }
+}
+
+function buildTranscriptPairs() {
+  const sourceSegments = chronologicalSegments("source");
+  const translatedSegments = chronologicalSegments("translated");
+  const total = Math.max(sourceSegments.length, translatedSegments.length);
+  const pairs = [];
+
+  for (let index = 0; index < total; index += 1) {
+    const source = sourceSegments[index] || null;
+    const translated = translatedSegments[index] || null;
+    const startSeconds = Math.min(
+      source?.startSeconds ?? translated?.startSeconds ?? 0,
+      translated?.startSeconds ?? source?.startSeconds ?? 0
+    );
+    const endSeconds = Math.max(
+      source?.endSeconds ?? translated?.endSeconds ?? startSeconds + 1.2,
+      translated?.endSeconds ?? source?.endSeconds ?? startSeconds + 1.2
+    );
+    pairs.push({
+      index: index + 1,
+      source,
+      translated,
+      startSeconds,
+      endSeconds,
+      at: source?.at || translated?.at || new Date()
+    });
+  }
+
+  return pairs;
+}
+
+function chronologicalSegments(kind) {
+  return state.segments
+    .filter((segment) => segment.kind === kind)
+    .slice()
+    .sort((a, b) => a.startSeconds - b.startSeconds || a.id - b.id);
 }
 
 function stopSession() {
@@ -530,6 +722,7 @@ function stopSession() {
   state.sourceStream = null;
   state.audioContext = null;
   state.analyser = null;
+  state.elapsedSeconds = currentElapsedSeconds();
   state.startedAt = null;
   state.isRunning = false;
   state.isDemo = false;
@@ -552,6 +745,7 @@ function startDemo() {
   setRunningUi(true);
   state.isRunning = true;
   state.isDemo = true;
+  state.elapsedSeconds = 0;
   state.startedAt = Date.now();
   state.clockTimer = setInterval(updateClockAndRates, 1000);
   setStatus("live", "Demo");
@@ -638,6 +832,7 @@ function resetRuntime() {
     firstOutputAt: null,
     connectionAt: null
   };
+  state.elapsedSeconds = 0;
   elements.eventCount.textContent = "0";
   elements.latencyEstimate.textContent = "--";
   elements.outputRate.textContent = "0 wpm";
@@ -649,11 +844,14 @@ function resetTranscripts() {
   state.currentTranslated = "";
   state.fullSource = [];
   state.fullTranslated = [];
+  state.segments = [];
+  state.nextSegmentId = 1;
   state.metrics.inputChars = 0;
   state.metrics.outputChars = 0;
   renderLiveCaptions();
   renderHistory();
   updateTranscriptStats();
+  updateMeetingMeta();
 }
 
 function setRunningUi(isRunning) {
@@ -916,44 +1114,219 @@ function highlightLanguageChip(code) {
 }
 
 async function copyTranscripts() {
-  const text = buildTranscriptText();
+  const payload = buildExportPayload();
   try {
-    await navigator.clipboard.writeText(text);
-    writeNote("字幕をクリップボードにコピーしました。");
+    await navigator.clipboard.writeText(payload.content);
+    writeNote(`${payload.label}をクリップボードにコピーしました。`);
   } catch {
     writeNote("クリップボードへコピーできませんでした。Exportを使ってください。");
   }
 }
 
 function downloadTranscripts() {
-  const blob = new Blob([buildTranscriptText()], { type: "text/plain;charset=utf-8" });
+  const payload = buildExportPayload();
+  const blob = new Blob([payload.content], { type: payload.type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `realtime-translation-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
+  link.download = `${safeFilename(currentMeetingTitle())}-${new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")}.${payload.extension}`;
   link.click();
   URL.revokeObjectURL(url);
+  writeNote(`${payload.label}を書き出しました。`);
+}
+
+function buildExportPayload() {
+  const format = elements.exportFormat.value || "txt";
+  const builders = {
+    txt: () => ({
+      content: buildTranscriptText(),
+      extension: "txt",
+      label: "Transcript TXT",
+      type: "text/plain;charset=utf-8"
+    }),
+    md: () => ({
+      content: buildMeetingMarkdown(),
+      extension: "md",
+      label: "Meeting Markdown",
+      type: "text/markdown;charset=utf-8"
+    }),
+    srt: () => ({
+      content: buildSrtSubtitles(),
+      extension: "srt",
+      label: "SubRip SRT",
+      type: "application/x-subrip;charset=utf-8"
+    }),
+    vtt: () => ({
+      content: buildWebVttSubtitles(),
+      extension: "vtt",
+      label: "WebVTT",
+      type: "text/vtt;charset=utf-8"
+    }),
+    json: () => ({
+      content: JSON.stringify(buildSessionJson(), null, 2),
+      extension: "json",
+      label: "Session JSON",
+      type: "application/json;charset=utf-8"
+    })
+  };
+  return (builders[format] || builders.txt)();
 }
 
 function buildTranscriptText() {
+  const pairs = buildTranscriptPairs();
   const lines = [
+    currentMeetingTitle(),
     "Realtime Translation Dashboard",
+    `Mode: ${state.sessionMode}`,
+    `Source: ${selectedSourceMode()}`,
     `Target: ${elements.targetLanguage.value}`,
     `Generated: ${new Date().toISOString()}`,
+    `Duration: ${formatDuration(Math.floor(currentElapsedSeconds()))}`,
     "",
-    "[Source]",
-    ...state.fullSource
-      .slice()
-      .reverse()
-      .map((item) => `${item.at.toISOString()} ${item.text}`),
-    state.currentSource ? `live ${state.currentSource}` : "",
-    "",
-    "[Translated]",
-    ...state.fullTranslated
-      .slice()
-      .reverse()
-      .map((item) => `${item.at.toISOString()} ${item.text}`),
-    state.currentTranslated ? `live ${state.currentTranslated}` : ""
+    "[Meeting Pairs]"
   ];
-  return lines.filter((line) => line !== "").join("\n");
+
+  for (const pair of pairs) {
+    lines.push(
+      `${formatTimelineTime(pair.startSeconds)} Source: ${pair.source?.text || ""}`,
+      `${formatTimelineTime(pair.startSeconds)} Translated: ${pair.translated?.text || ""}`,
+      ""
+    );
+  }
+
+  if (state.currentSource || state.currentTranslated) {
+    lines.push("[Live]", `Source: ${state.currentSource}`, `Translated: ${state.currentTranslated}`);
+  }
+
+  return lines.filter((line) => line !== undefined).join("\n").trim() + "\n";
+}
+
+function buildMeetingMarkdown() {
+  const pairs = buildTranscriptPairs();
+  const lines = [
+    `# ${currentMeetingTitle()}`,
+    "",
+    `- Mode: ${state.sessionMode}`,
+    `- Source: ${selectedSourceMode()}`,
+    `- Target: ${elements.targetLanguage.value}`,
+    `- Generated: ${new Date().toISOString()}`,
+    `- Duration: ${formatDuration(Math.floor(currentElapsedSeconds()))}`,
+    "",
+    "| Time | Source | Translated |",
+    "| --- | --- | --- |"
+  ];
+
+  for (const pair of pairs) {
+    lines.push(
+      `| ${formatTimelineTime(pair.startSeconds)} | ${escapeMarkdownTable(pair.source?.text || "")} | ${escapeMarkdownTable(pair.translated?.text || "")} |`
+    );
+  }
+
+  if (state.currentSource || state.currentTranslated) {
+    lines.push(
+      `| live | ${escapeMarkdownTable(state.currentSource)} | ${escapeMarkdownTable(state.currentTranslated)} |`
+    );
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+function buildSrtSubtitles() {
+  return exportSubtitleSegments()
+    .map((segment, index) =>
+      [
+        String(index + 1),
+        `${formatSubtitleTime(segment.startSeconds, ",")} --> ${formatSubtitleTime(segment.endSeconds, ",")}`,
+        segment.text
+      ].join("\n")
+    )
+    .join("\n\n") + "\n";
+}
+
+function buildWebVttSubtitles() {
+  const cues = exportSubtitleSegments()
+    .map((segment) =>
+      `${formatSubtitleTime(segment.startSeconds, ".")} --> ${formatSubtitleTime(segment.endSeconds, ".")}\n${segment.text}`
+    )
+    .join("\n\n");
+  return `WEBVTT\n\n${cues}\n`;
+}
+
+function exportSubtitleSegments() {
+  const translated = chronologicalSegments("translated");
+  if (state.currentTranslated.trim()) {
+    const startSeconds = Math.max(0, currentElapsedSeconds() - estimateSubtitleDuration(state.currentTranslated));
+    translated.push({
+      id: 0,
+      kind: "translated",
+      text: state.currentTranslated.trim(),
+      at: new Date(),
+      startSeconds,
+      endSeconds: Math.max(startSeconds + 1.2, currentElapsedSeconds())
+    });
+  }
+  return translated.length ? translated : chronologicalSegments("source");
+}
+
+function buildSessionJson() {
+  return {
+    title: currentMeetingTitle(),
+    mode: state.sessionMode,
+    source: selectedSourceMode(),
+    targetLanguage: elements.targetLanguage.value,
+    generatedAt: new Date().toISOString(),
+    durationSeconds: Math.round(currentElapsedSeconds()),
+    pairs: buildTranscriptPairs().map((pair) => ({
+      index: pair.index,
+      startSeconds: roundSeconds(pair.startSeconds),
+      endSeconds: roundSeconds(pair.endSeconds),
+      source: pair.source?.text || "",
+      translated: pair.translated?.text || ""
+    })),
+    segments: state.segments.map((segment) => ({
+      id: segment.id,
+      kind: segment.kind,
+      text: segment.text,
+      at: segment.at.toISOString(),
+      startSeconds: roundSeconds(segment.startSeconds),
+      endSeconds: roundSeconds(segment.endSeconds)
+    })),
+    live: {
+      source: state.currentSource,
+      translated: state.currentTranslated
+    }
+  };
+}
+
+function formatSubtitleTime(seconds, separator) {
+  const safeSeconds = Math.max(0, seconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const wholeSeconds = Math.floor(safeSeconds % 60);
+  const milliseconds = Math.floor((safeSeconds % 1) * 1000);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(wholeSeconds).padStart(2, "0")}${separator}${String(milliseconds).padStart(3, "0")}`;
+}
+
+function formatTimelineTime(seconds) {
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function escapeMarkdownTable(value) {
+  return value.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+}
+
+function safeFilename(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+/gi, "-")
+    .replace(/^-+|-+$/g, "") || "realtime-meeting";
+}
+
+function roundSeconds(seconds) {
+  return Math.round(seconds * 100) / 100;
 }

@@ -46,6 +46,23 @@
             </label>
           </fieldset>
 
+          <fieldset class="segmented mode-segmented" aria-label="Session mode">
+            <legend>Session Mode</legend>
+            <label>
+              <input type="radio" name="sessionMode" value="dashboard" checked />
+              <span>Dashboard</span>
+            </label>
+            <label>
+              <input type="radio" name="sessionMode" value="meeting" />
+              <span>Meeting</span>
+            </label>
+          </fieldset>
+
+          <label class="field">
+            <span>Meeting Title</span>
+            <input id="meetingTitle" type="text" value="Realtime Meeting" maxlength="80" />
+          </label>
+
           <label class="field">
             <span>Target Language</span>
             <select id="targetLanguage"></select>
@@ -89,6 +106,17 @@
             <button class="button ghost" id="copyButton" type="button">Copy</button>
             <button class="button ghost" id="downloadButton" type="button">Export</button>
           </div>
+
+          <label class="field export-field">
+            <span>Export Format</span>
+            <select id="exportFormat">
+              <option value="txt">Transcript TXT</option>
+              <option value="md">Meeting Markdown</option>
+              <option value="srt">SubRip SRT</option>
+              <option value="vtt">WebVTT</option>
+              <option value="json">Session JSON</option>
+            </select>
+          </label>
 
           <div class="system-note" id="systemNote" role="status">
             準備中
@@ -151,6 +179,23 @@
               <span>Final only</span>
             </label>
           </div>
+
+          <div class="meeting-summary" id="meetingSummary" aria-label="Meeting summary">
+            <div>
+              <span>Mode</span>
+              <strong id="modeBadge">Dashboard</strong>
+            </div>
+            <div>
+              <span>Title</span>
+              <strong id="meetingTitleBadge">Realtime Meeting</strong>
+            </div>
+            <div>
+              <span>Segments</span>
+              <strong id="segmentCount">0</strong>
+            </div>
+          </div>
+
+          <div class="meeting-feed" id="meetingFeed" aria-live="polite"></div>
 
           <div class="transcript-grid">
             <article class="transcript-column" aria-labelledby="sourceTranscriptTitle">
