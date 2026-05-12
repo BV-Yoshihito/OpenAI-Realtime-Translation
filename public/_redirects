@@ -1,0 +1,2 @@
+/api/config /.netlify/functions/config 200
+/api/session /.netlify/functions/session 200

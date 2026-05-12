@@ -33,7 +33,7 @@ npm start
 
 このリポジトリは Netlify Functions 対応済みです。Netlify は `public/` を公開し、`netlify/functions` が短命な OpenAI Realtime Translation client secret を作成します。`OPENAI_API_KEY` はブラウザには公開されません。
 
-1. このフォルダを GitHub にpushするか、Netlify CLI で直接インポートします。
+1. このフォルダ全体を GitHub にpushするか、Netlify CLI でプロジェクトルートからデプロイします。
 2. Netlifyサイトを作成します。
    - Publish directory: `public`
    - Functions directory: `netlify/functions`
@@ -43,6 +43,8 @@ npm start
    - 任意: `OPENAI_INPUT_TRANSCRIPTION_MODEL`
    - 任意: `OPENAI_SAFETY_IDENTIFIER`
 4. デプロイ後、発行されたNetlify URLをチームに共有します。
+
+`public/` フォルダだけをNetlify Dropにドラッグ&ドロップすると、Functionsが含まれないため `/api/config` が404になります。必ず `netlify.toml` と `netlify/functions` を含むプロジェクト全体をデプロイしてください。
 
 注意: サイトにアクセスできる人は、あなたの OpenAI アカウント経由で翻訳セッションを作成できます。チーム内限定で共有し、必要に応じてNetlify側のアクセス制限、共有パスコード、OpenAIの使用量上限を設定してください。
 
