@@ -48,6 +48,33 @@ npm start
 
 注意: サイトにアクセスできる人は、あなたの OpenAI アカウント経由で翻訳セッションを作成できます。チーム内限定で共有し、必要に応じてNetlify側のアクセス制限、共有パスコード、OpenAIの使用量上限を設定してください。
 
+## Cloudflare Pagesで無料共有する
+
+Netlifyの無料クレジット上限に当たった場合は、Cloudflare Pagesでも共有できます。このリポジトリには Cloudflare Pages Functions 用の `functions/api/config.js` と `functions/api/session.js` も含まれています。フロントエンド側は同じ `/api/config` と `/api/session` を使うため、アプリの操作方法は変わりません。
+
+1. Cloudflare Dashboardで `Workers & Pages` を開きます。
+2. `Create application` から `Pages` を選びます。
+3. GitHubリポジトリを接続します。
+4. ビルド設定を入力します。
+   - Build command: 空欄
+   - Build output directory: `public`
+5. 環境変数に以下を設定します。
+   - 必須: `OPENAI_API_KEY`
+   - 任意: `OPENAI_TRANSLATION_MODEL`
+   - 任意: `OPENAI_INPUT_TRANSCRIPTION_MODEL`
+   - 任意: `OPENAI_SAFETY_IDENTIFIER`
+6. デプロイ後、発行された `*.pages.dev` URLをチームに共有します。
+
+Cloudflare側のホスティングは無料枠で共有できますが、OpenAI API利用料は別途発生します。チーム内限定で共有し、OpenAI側の使用量上限も設定してください。
+
+デプロイ後は、以下のURLを開いて設定を確認できます。
+
+```text
+https://あなたのサイト.pages.dev/api/config
+```
+
+`hasApiKey: true` が出れば、Cloudflare Pages Function が環境変数を読めています。
+
 ## 検証
 
 ```bash
