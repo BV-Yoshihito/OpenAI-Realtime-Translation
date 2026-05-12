@@ -26,6 +26,21 @@ Open the URL printed by the server. If `OPENAI_API_KEY` is not set, the dashboar
 
 Select `Meeting`, set the meeting title, choose the target language, then press `Start` or `Demo`. Meeting mode keeps a paired timeline of source and translated text. `Export Format` controls whether `Copy` and `Export` produce TXT, Markdown, SRT, WebVTT, or JSON.
 
+## Share With A Team On Netlify
+
+This repo is ready for Netlify hosting with serverless API routes. Netlify serves `public/`, and `netlify/functions` safely creates short-lived OpenAI Realtime Translation client secrets without exposing `OPENAI_API_KEY` to the browser.
+
+1. Push this folder to GitHub or import it directly with the Netlify CLI.
+2. Create a Netlify site with:
+   - Publish directory: `public`
+   - Functions directory: `netlify/functions`
+3. Add environment variables in Netlify:
+   - `OPENAI_API_KEY`
+   - Optional: `OPENAI_TRANSLATION_MODEL`, `OPENAI_INPUT_TRANSCRIPTION_MODEL`, `OPENAI_SAFETY_IDENTIFIER`
+4. Deploy and share the Netlify URL with the team.
+
+Keep the site private to your team. Anyone with access to the site can create translation sessions through your OpenAI account.
+
 ## Validation
 
 ```bash
