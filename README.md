@@ -1,53 +1,58 @@
 # Realtime Translation Dashboard
 
-Browser-first dashboard for OpenAI Realtime Translation. It captures tab audio or microphone audio, sends it to `gpt-realtime-translate` over WebRTC, plays translated speech, and renders source/translated transcript streams with operator telemetry.
+OpenAI Realtime Translation を使った、ブラウザファーストのリアルタイム翻訳ダッシュボードです。ブラウザタブ音声またはマイク音声を取得し、WebRTC 経由で `gpt-realtime-translate` に送信します。翻訳音声の再生、原文/翻訳字幕、会議ログ、字幕エクスポート、セッション計測をひとつの画面で確認できます。
 
-## Run
+## ローカル起動
 
 ```bash
 cp .env.example .env
-# add OPENAI_API_KEY to .env
+# .env に OPENAI_API_KEY を設定
 npm start
 ```
 
-Open the URL printed by the server. If `OPENAI_API_KEY` is not set, the dashboard still works in Demo mode so you can inspect the UI and telemetry.
+サーバーに表示されたURLをブラウザで開きます。`OPENAI_API_KEY` が未設定でも、`Demo` モードでUI、字幕、計測表示を確認できます。
 
-## What It Implements
+## 実装内容
 
-- Server-created short-lived Realtime Translation client secrets.
-- Browser WebRTC call to `https://api.openai.com/v1/realtime/translations/calls`.
-- Tab audio capture via `getDisplayMedia()` and microphone capture via `getUserMedia()`.
-- Input and output transcript delta handling over the `oai-events` data channel.
-- Target-language selection, near-field noise reduction, input transcription, audio mix, event log, metrics, transcript export, and a local visual signal monitor.
-- Meeting mode with a meeting title, Mic-first setup, paired source/translated timeline, segment counts, and export-ready meeting notes.
-- Subtitle export as TXT, Markdown, SRT, WebVTT, or JSON.
+- サーバー側で短命な Realtime Translation client secret を作成
+- `https://api.openai.com/v1/realtime/translations/calls` への WebRTC 接続
+- `getDisplayMedia()` によるタブ音声取得
+- `getUserMedia()` によるマイク音声取得
+- `oai-events` データチャンネル経由の入力/出力字幕イベント処理
+- 翻訳先言語の選択、ノイズ低減、入力文字起こし、音声ミックス、イベントログ、計測表示
+- 会議モード、会議タイトル、原文/翻訳ペアのタイムライン、セグメント数表示
+- TXT、Markdown、SRT、WebVTT、JSON 形式の字幕/会議ログエクスポート
 
-## Meeting Mode
+## 会議モード
 
-Select `Meeting`, set the meeting title, choose the target language, then press `Start` or `Demo`. Meeting mode keeps a paired timeline of source and translated text. `Export Format` controls whether `Copy` and `Export` produce TXT, Markdown, SRT, WebVTT, or JSON.
+`Meeting` を選択し、会議タイトルと翻訳先言語を設定してから `Start` または `Demo` を押します。
 
-## Share With A Team On Netlify
+会議モードでは、原文と翻訳をペアにしたタイムラインを表示します。`Export Format` で出力形式を選ぶと、`Copy` と `Export` の内容もその形式に切り替わります。SRT/WebVTT は翻訳字幕中心、Markdown/JSON は原文と翻訳のペアも残します。
 
-This repo is ready for Netlify hosting with serverless API routes. Netlify serves `public/`, and `netlify/functions` safely creates short-lived OpenAI Realtime Translation client secrets without exposing `OPENAI_API_KEY` to the browser.
+## Netlifyでチームに共有する
 
-1. Push this folder to GitHub or import it directly with the Netlify CLI.
-2. Create a Netlify site with:
+このリポジトリは Netlify Functions 対応済みです。Netlify は `public/` を公開し、`netlify/functions` が短命な OpenAI Realtime Translation client secret を作成します。`OPENAI_API_KEY` はブラウザには公開されません。
+
+1. このフォルダを GitHub にpushするか、Netlify CLI で直接インポートします。
+2. Netlifyサイトを作成します。
    - Publish directory: `public`
    - Functions directory: `netlify/functions`
-3. Add environment variables in Netlify:
-   - `OPENAI_API_KEY`
-   - Optional: `OPENAI_TRANSLATION_MODEL`, `OPENAI_INPUT_TRANSCRIPTION_MODEL`, `OPENAI_SAFETY_IDENTIFIER`
-4. Deploy and share the Netlify URL with the team.
+3. Netlifyの環境変数に以下を設定します。
+   - 必須: `OPENAI_API_KEY`
+   - 任意: `OPENAI_TRANSLATION_MODEL`
+   - 任意: `OPENAI_INPUT_TRANSCRIPTION_MODEL`
+   - 任意: `OPENAI_SAFETY_IDENTIFIER`
+4. デプロイ後、発行されたNetlify URLをチームに共有します。
 
-Keep the site private to your team. Anyone with access to the site can create translation sessions through your OpenAI account.
+注意: サイトにアクセスできる人は、あなたの OpenAI アカウント経由で翻訳セッションを作成できます。チーム内限定で共有し、必要に応じてNetlify側のアクセス制限、共有パスコード、OpenAIの使用量上限を設定してください。
 
-## Validation
+## 検証
 
 ```bash
 npm test
 ```
 
-## References
+## 参考リンク
 
 - OpenAI Live Translation guide: https://developers.openai.com/api/docs/guides/realtime-translation
 - OpenAI Cookbook: https://developers.openai.com/cookbook/examples/voice_solutions/realtime_translation_guide
