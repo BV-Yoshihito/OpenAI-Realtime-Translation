@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Realtime Translation Dashboard</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -23,6 +23,27 @@
           <button class="button danger" id="stopButton" type="button" disabled>Stop</button>
         </div>
       </header>
+
+      <div class="runtime-banner" id="runtimeBanner" hidden></div>
+
+      <section class="startup-checks" aria-label="Connection readiness">
+        <div class="startup-check" data-check="runtime">
+          <span>Open</span>
+          <strong id="runtimeCheckLabel">Checking</strong>
+        </div>
+        <div class="startup-check" data-check="api">
+          <span>API</span>
+          <strong id="apiCheckLabel">Checking</strong>
+        </div>
+        <div class="startup-check" data-check="input">
+          <span>Input</span>
+          <strong id="inputCheckLabel">Tab audio</strong>
+        </div>
+        <div class="startup-check" data-check="permission">
+          <span>Permission</span>
+          <strong id="permissionCheckLabel">On Start</strong>
+        </div>
+      </section>
 
       <main class="dashboard-grid">
         <section class="panel controls-panel" aria-labelledby="controlsTitle">
@@ -276,6 +297,6 @@
       </main>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <script src="app.js" defer></script>
   </body>
 </html>

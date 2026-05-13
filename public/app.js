@@ -1,8 +1,31 @@
 const TRANSLATION_CALL_URL = "https://api.openai.com/v1/realtime/translations/calls";
 const MAX_EVENT_LINES = 80;
 const MAX_HISTORY_ITEMS = 18;
+const LOCAL_APP_URL = "http://127.0.0.1:5173/";
+const FALLBACK_LANGUAGES = Object.freeze([
+  { code: "ar", label: "Arabic", native: "العربية", accent: "#d97706" },
+  { code: "de", label: "German", native: "Deutsch", accent: "#2563eb" },
+  { code: "en", label: "English", native: "English", accent: "#111827" },
+  { code: "es", label: "Spanish", native: "Español", accent: "#dc2626" },
+  { code: "fr", label: "French", native: "Français", accent: "#7c3aed" },
+  { code: "hi", label: "Hindi", native: "हिन्दी", accent: "#ea580c" },
+  { code: "it", label: "Italian", native: "Italiano", accent: "#16a34a" },
+  { code: "ja", label: "Japanese", native: "日本語", accent: "#0891b2" },
+  { code: "ko", label: "Korean", native: "한국어", accent: "#db2777" },
+  { code: "pt", label: "Portuguese", native: "Português", accent: "#059669" },
+  { code: "ru", label: "Russian", native: "Русский", accent: "#4f46e5" },
+  { code: "tr", label: "Turkish", native: "Türkçe", accent: "#be123c" },
+  { code: "zh", label: "Chinese", native: "中文", accent: "#ca8a04" }
+]);
+const FALLBACK_CONFIG = Object.freeze({
+  hasApiKey: false,
+  translationModel: "demo-only",
+  inputTranscriptionModel: "demo-only",
+  languages: FALLBACK_LANGUAGES
+});
 
 const elements = {
+  apiCheckLabel: document.querySelector("#apiCheckLabel"),
   apiKeyBadge: document.querySelector("#apiKeyBadge"),
   audioMeter: document.querySelector(".audio-meter"),
   audioState: document.querySelector("#audioState"),
@@ -14,6 +37,7 @@ const elements = {
   eventCount: document.querySelector("#eventCount"),
   eventLog: document.querySelector("#eventLog"),
   exportFormat: document.querySelector("#exportFormat"),
+  inputCheckLabel: document.querySelector("#inputCheckLabel"),
   inputTranscription: document.querySelector("#inputTranscription"),
   languageStrip: document.querySelector("#languageStrip"),
   latencyEstimate: document.querySelector("#latencyEstimate"),
@@ -28,6 +52,9 @@ const elements = {
   originalVolume: document.querySelector("#originalVolume"),
   originalVolumeValue: document.querySelector("#originalVolumeValue"),
   outputRate: document.querySelector("#outputRate"),
+  permissionCheckLabel: document.querySelector("#permissionCheckLabel"),
+  runtimeBanner: document.querySelector("#runtimeBanner"),
+  runtimeCheckLabel: document.querySelector("#runtimeCheckLabel"),
   segmentCount: document.querySelector("#segmentCount"),
   sessionClock: document.querySelector("#sessionClock"),
   showFinalOnly: document.querySelector("#showFinalOnly"),
@@ -57,6 +84,9 @@ const elements = {
 
 const state = {
   config: null,
+  configLoadError: "",
+  isFileMode: window.location.protocol === "file:",
+  permissionState: { label: "On Start", tone: "warn" },
   pc: null,
   dataChannel: null,
   sourceStream: null,
@@ -96,20 +126,23 @@ const demoScript = [
 ];
 
 init().catch((error) => {
+  const message = getErrorMessage(error);
   setStatus("error", "Error");
-  writeNote(error.message);
-  logEvent("startup.error", error.message, "error");
+  writeNote(message);
+  logEvent("startup.error", message, "error");
 });
 
 async function init() {
   bindControls();
   restorePreferences();
   updateVolumes();
+  updateRuntimeChecks();
   startSignalLoop();
   await loadConfig();
   resetTranscripts();
+  setRunningUi(false);
   setStatus("idle", "Idle");
-  writeNote("APIキーを設定すると実接続、未設定でもDemoで確認できます。");
+  writeNote(initialSystemNote());
 }
 
 function bindControls() {
@@ -140,6 +173,8 @@ function bindControls() {
   document.querySelectorAll("input[name='sourceMode']").forEach((input) => {
     input.addEventListener("change", () => {
       elements.sourceKind.textContent = selectedSourceMode() === "tab" ? "Tab" : "Mic";
+      markPermissionState("On Start", "warn");
+      updateRuntimeChecks();
     });
   });
 }
@@ -233,16 +268,151 @@ function visualModeLabel(value) {
 }
 
 async function loadConfig() {
-  const response = await fetch("/api/config", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Config failed: ${response.status}`);
+  if (state.isFileMode) {
+    state.configLoadError = "";
+    state.config = { ...FALLBACK_CONFIG };
+    applyPublicConfig(state.config, { fileMode: true });
+    showRuntimeBanner(
+      `ファイルを直接開いています。画面確認とDemoは使えますが、実接続は ${LOCAL_APP_URL} または公開URLで開いてください。`,
+      "warn"
+    );
+    return;
   }
 
-  state.config = await response.json();
-  elements.apiKeyBadge.textContent = state.config.hasApiKey ? "API Ready" : "No API Key";
-  elements.apiKeyBadge.style.borderColor = state.config.hasApiKey ? "rgba(21,128,61,.35)" : "rgba(200,117,8,.45)";
-  elements.modelBadge.textContent = state.config.translationModel;
-  populateLanguages(state.config.languages);
+  try {
+    hideRuntimeBanner();
+    const response = await fetch("/api/config", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(describeConfigHttpError(response.status));
+    }
+
+    state.configLoadError = "";
+    state.config = await response.json();
+    applyPublicConfig(state.config);
+  } catch (error) {
+    state.configLoadError = describeConfigLoadError(error);
+    state.config = { ...FALLBACK_CONFIG };
+    applyPublicConfig(state.config, { configError: true });
+    showRuntimeBanner(`${state.configLoadError} Demoは利用できます。`, "error");
+  }
+}
+
+function applyPublicConfig(config, { fileMode = false, configError = false } = {}) {
+  const languages = Array.isArray(config.languages) && config.languages.length ? config.languages : FALLBACK_LANGUAGES;
+  let label = "No API Key";
+  let borderColor = "rgba(200,117,8,.45)";
+
+  if (fileMode) {
+    label = "Demo Only";
+  } else if (configError) {
+    label = "API Error";
+    borderColor = "rgba(180,35,85,.35)";
+  } else if (config.hasApiKey) {
+    label = "API Ready";
+    borderColor = "rgba(21,128,61,.35)";
+  }
+
+  elements.apiKeyBadge.textContent = label;
+  elements.apiKeyBadge.style.borderColor = borderColor;
+  elements.modelBadge.textContent = config.translationModel || "demo-only";
+  populateLanguages(languages);
+  updateRuntimeChecks();
+}
+
+function describeConfigHttpError(status) {
+  if (status === 404) {
+    return "/api/config が見つかりません。Cloudflare Pagesでは Build output directory が public、Functions フォルダが functions としてデプロイされているか確認してください。";
+  }
+  if (status === 401 || status === 403) {
+    return "設定APIへのアクセスが拒否されました。Cloudflare Pages の環境変数とデプロイ設定を確認してください。";
+  }
+  if (status >= 500) {
+    return "設定APIでサーバーエラーが発生しました。Cloudflare Pages の Functions ログを確認してください。";
+  }
+  return `設定APIの読み込みに失敗しました。HTTP ${status}`;
+}
+
+function describeConfigLoadError(error) {
+  const message = getErrorMessage(error);
+  if (/^\/api\/config|^設定API/.test(message)) {
+    return message;
+  }
+  return `設定APIに接続できません。ローカルでは npm start で起動した ${LOCAL_APP_URL} を開いてください。`;
+}
+
+function showRuntimeBanner(message, tone = "warn") {
+  if (!elements.runtimeBanner) {
+    return;
+  }
+  elements.runtimeBanner.hidden = false;
+  elements.runtimeBanner.dataset.tone = tone;
+  elements.runtimeBanner.textContent = message;
+}
+
+function hideRuntimeBanner() {
+  if (!elements.runtimeBanner) {
+    return;
+  }
+  elements.runtimeBanner.hidden = true;
+  elements.runtimeBanner.textContent = "";
+}
+
+function initialSystemNote() {
+  if (state.isFileMode) {
+    return `ファイルを直接開いているためDemoのみ利用できます。実接続は ${LOCAL_APP_URL} または公開URLで開いてください。`;
+  }
+  if (state.configLoadError) {
+    return `${state.configLoadError} Demoは利用できます。`;
+  }
+  if (!state.config?.hasApiKey) {
+    return "サーバー側のOPENAI_API_KEYが未設定です。Demoで確認するか、Cloudflare Pagesの環境変数を設定してください。";
+  }
+  return "API Readyです。TabまたはMicを選んでStartできます。";
+}
+
+function updateRuntimeChecks() {
+  if (!elements.runtimeCheckLabel) {
+    return;
+  }
+
+  if (state.isFileMode) {
+    elements.runtimeCheckLabel.textContent = "Local file";
+    setStartupCheckState("runtime", "warn");
+  } else if (window.isSecureContext) {
+    elements.runtimeCheckLabel.textContent = "Web URL";
+    setStartupCheckState("runtime", "good");
+  } else {
+    elements.runtimeCheckLabel.textContent = "Not secure";
+    setStartupCheckState("runtime", "error");
+  }
+
+  if (state.configLoadError) {
+    elements.apiCheckLabel.textContent = "API Error";
+    setStartupCheckState("api", "error");
+  } else if (state.config?.hasApiKey) {
+    elements.apiCheckLabel.textContent = "Ready";
+    setStartupCheckState("api", "good");
+  } else {
+    elements.apiCheckLabel.textContent = "Demo only";
+    setStartupCheckState("api", "warn");
+  }
+
+  elements.inputCheckLabel.textContent = selectedSourceMode() === "mic" ? "Microphone" : "Tab audio";
+  setStartupCheckState("input", "good");
+  elements.permissionCheckLabel.textContent = state.permissionState.label;
+  setStartupCheckState("permission", state.permissionState.tone);
+}
+
+function setStartupCheckState(key, tone) {
+  const node = document.querySelector(`.startup-check[data-check='${key}']`);
+  if (node) {
+    node.dataset.state = tone;
+  }
+}
+
+function markPermissionState(label, tone = "warn") {
+  state.permissionState = { label, tone };
+  updateRuntimeChecks();
 }
 
 function populateLanguages(languages) {
@@ -279,16 +449,15 @@ async function startSession() {
     return;
   }
 
-  if (!state.config?.hasApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured. Add it to .env or use Demo mode.");
-  }
+  runStartPreflight();
 
   stopSession();
   resetRuntime();
   setRunningUi(true);
   setStatus("connecting", "Connecting");
   updateMeetingMeta();
-  writeNote("音声入力の許可を待っています。");
+  markPermissionState("Waiting", "warn");
+  writeNote(permissionPromptMessage(selectedSourceMode()));
   logEvent(
     "session.start",
     `${state.sessionMode} / ${selectedSourceMode()} -> ${elements.targetLanguage.value}`,
@@ -300,8 +469,10 @@ async function startSession() {
     try {
       sourceStream = await captureSourceStream();
     } catch (error) {
+      markPermissionState("Blocked", "error");
       throw new Error(describeMediaCaptureError(error, selectedSourceMode()));
     }
+    markPermissionState("Granted", "good");
     state.sourceStream = sourceStream;
     attachSourcePreview(sourceStream);
     attachOriginalMonitor(sourceStream);
@@ -324,9 +495,46 @@ async function startSession() {
     setStatus("live", "Live");
     writeNote("接続中。翻訳音声と字幕はストリームに合わせて更新されます。");
   } catch (error) {
-    stopSession();
+    stopSession({ preservePermissionState: true });
     throw error;
   }
+}
+
+function runStartPreflight() {
+  if (state.isFileMode) {
+    throw new Error(`ファイルを直接開いているため実接続は使えません。npm start 後の ${LOCAL_APP_URL} または公開URLを開いてください。`);
+  }
+  if (!window.isSecureContext) {
+    throw new Error(`音声キャプチャには安全なブラウザコンテキストが必要です。ローカルでは ${LOCAL_APP_URL}、共有時は https の公開URLで開いてください。`);
+  }
+  if (!navigator.mediaDevices) {
+    throw new Error(`このブラウザでは音声キャプチャAPIが使えません。Google Chromeで ${LOCAL_APP_URL} または公開URLを開いてください。`);
+  }
+  if (selectedSourceMode() === "tab" && typeof navigator.mediaDevices.getDisplayMedia !== "function") {
+    throw new Error("このブラウザではタブ音声共有が使えません。Google Chromeで開き、Tab入力を使ってください。");
+  }
+  if (selectedSourceMode() === "mic" && typeof navigator.mediaDevices.getUserMedia !== "function") {
+    throw new Error("このブラウザではマイク入力が使えません。Google Chromeで開き、Mic入力を使ってください。");
+  }
+  if (typeof RTCPeerConnection === "undefined") {
+    throw new Error("このブラウザではWebRTCが使えません。Google Chromeの最新版で開いてください。");
+  }
+  if (state.configLoadError) {
+    throw new Error(`${state.configLoadError} Startには /api/config と /api/session が必要です。`);
+  }
+  if (!state.config?.hasApiKey) {
+    throw new Error("サーバー側のOPENAI_API_KEYが未設定です。Cloudflare Pagesでは Settings > Environment variables に OPENAI_API_KEY を設定し、再デプロイしてください。");
+  }
+  if (!elements.targetLanguage.value) {
+    throw new Error("Target Languageを選択してください。");
+  }
+}
+
+function permissionPromptMessage(mode) {
+  if (mode === "mic") {
+    return "マイクの許可を待っています。ChromeとmacOSの両方でマイクアクセスを許可してください。";
+  }
+  return "タブ共有の許可を待っています。共有ダイアログで翻訳したいChromeタブを選び、タブの音声共有を有効にしてください。";
 }
 
 async function createTranslationSession() {
@@ -343,7 +551,7 @@ async function createTranslationSession() {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const details = payload?.details?.error?.message || payload?.error || `Session failed: ${response.status}`;
-    throw new Error(details);
+    throw new Error(describeSessionError(response.status, details));
   }
   return payload;
 }
@@ -397,7 +605,8 @@ async function openWebRtcCall({ sourceStream, clientSecret }) {
   });
 
   if (!sdpResponse.ok) {
-    throw new Error(await sdpResponse.text());
+    const details = await sdpResponse.text().catch(() => "");
+    throw new Error(describeRealtimeCallError(sdpResponse.status, details));
   }
 
   await pc.setRemoteDescription({
@@ -451,6 +660,20 @@ function describeMediaCaptureError(error, mode) {
   const name = error instanceof Error ? error.name : "";
   const permissionNames = new Set(["NotAllowedError", "PermissionDeniedError", "SecurityError"]);
 
+  if (name === "NotFoundError" || /not found|no.*device/i.test(message)) {
+    return mode === "mic"
+      ? "利用できるマイクが見つかりません。OSの入力デバイス設定を確認し、必要なら外部マイクを接続してください。"
+      : "共有できるタブ音声が見つかりません。Chromeタブを選び、「タブの音声も共有」を有効にしてください。";
+  }
+
+  if (name === "NotReadableError" || /could not start|in use|busy/i.test(message)) {
+    return "音声デバイスを開始できませんでした。別のアプリがマイクを使用していないか確認し、ブラウザを再読み込みしてから再試行してください。";
+  }
+
+  if (name === "AbortError") {
+    return "音声入力の選択がキャンセルされました。Startを押して、共有するタブまたはマイクをもう一度選んでください。";
+  }
+
   if (permissionNames.has(name) || /permission|denied|not allowed/i.test(message)) {
     const source = mode === "mic" ? "マイク" : "タブ音声";
     return `${source}の許可が拒否されました。Chromeで開いている場合はアドレスバー左のサイト設定から許可し、macOSの「システム設定 > プライバシーとセキュリティ > マイク」でChromeまたはCodexを許可してください。Codexのin-app browserで失敗する場合は、Google Chromeで http://127.0.0.1:5173/ を開いて試してください。`;
@@ -471,6 +694,55 @@ function describeMediaCaptureError(error, mode) {
   }
 
   return message;
+}
+
+
+function describeSessionError(status, details = "") {
+  const clean = cleanServerDetail(details);
+  if (/OPENAI_API_KEY/i.test(clean)) {
+    return "サーバー側のOPENAI_API_KEYが未設定です。Cloudflare Pagesの環境変数に OPENAI_API_KEY を設定し、再デプロイしてください。";
+  }
+  if (status === 400) {
+    return `セッション設定が不正です。Target Languageや入力設定を確認してください。${clean ? ` 詳細: ${clean}` : ""}`;
+  }
+  if (status === 401) {
+    return "OpenAI APIキーが無効、または期限切れです。Cloudflare Pagesの OPENAI_API_KEY を確認してください。";
+  }
+  if (status === 403) {
+    return "OpenAI APIキーにRealtime Translationを使う権限がありません。プロジェクト権限と課金状態を確認してください。";
+  }
+  if (status === 429) {
+    return "OpenAI APIのレート制限または使用量上限に達しています。少し待つか、OpenAI側の利用上限を確認してください。";
+  }
+  if (status >= 500) {
+    return `セッション作成APIでサーバーエラーが発生しました。${clean ? ` 詳細: ${clean}` : "Cloudflare PagesのFunctionsログを確認してください。"}`;
+  }
+  return clean || `セッション作成に失敗しました。HTTP ${status}`;
+}
+
+function describeRealtimeCallError(status, details = "") {
+  const clean = cleanServerDetail(details);
+  if (status === 401) {
+    return "Realtime接続の認証に失敗しました。短命なclient secretが作成できているか、OPENAI_API_KEYを確認してください。";
+  }
+  if (status === 403) {
+    return "Realtime Translation APIへのアクセスが拒否されました。OpenAIプロジェクトの権限と課金状態を確認してください。";
+  }
+  if (status === 429) {
+    return "Realtime Translation APIのレート制限または使用量上限に達しています。少し待ってから再試行してください。";
+  }
+  return clean || `Realtime接続に失敗しました。HTTP ${status}`;
+}
+
+function cleanServerDetail(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 260);
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error || "Unknown error");
 }
 
 function ensureAudioTrack(stream, message) {
@@ -711,7 +983,8 @@ function chronologicalSegments(kind) {
     .sort((a, b) => a.startSeconds - b.startSeconds || a.id - b.id);
 }
 
-function stopSession() {
+function stopSession(options = {}) {
+  const { preservePermissionState = false } = options || {};
   const wasRunning = state.isRunning;
   window.speechSynthesis?.cancel();
   finalizeTranscript("source");
@@ -760,6 +1033,11 @@ function stopSession() {
 
   setRunningUi(false);
   setStatus("idle", "Idle");
+  if (!preservePermissionState) {
+    markPermissionState("On Start", "warn");
+  } else {
+    updateRuntimeChecks();
+  }
   elements.webrtcState.textContent = "closed";
   elements.sessionClock.textContent = "00:00";
   elements.signalLabel.textContent = "Waiting for stream";
@@ -778,6 +1056,7 @@ function startDemo() {
   state.startedAt = Date.now();
   state.clockTimer = setInterval(updateClockAndRates, 1000);
   setStatus("live", "Demo");
+  markPermissionState("Demo", "good");
   elements.webrtcState.textContent = "simulated";
   elements.audioMeter.classList.add("is-live");
   elements.audioState.textContent = "Simulated";
@@ -884,7 +1163,10 @@ function resetTranscripts() {
 }
 
 function setRunningUi(isRunning) {
-  elements.startButton.disabled = isRunning;
+  elements.startButton.disabled = isRunning || state.isFileMode;
+  elements.startButton.title = state.isFileMode
+    ? `実接続は ${LOCAL_APP_URL} または公開URLで開いてください。`
+    : "";
   elements.demoButton.disabled = isRunning;
   elements.stopButton.disabled = !isRunning;
 }
@@ -899,10 +1181,11 @@ function writeNote(message) {
 }
 
 function handleFatalError(error) {
+  const message = getErrorMessage(error);
   setStatus("error", "Error");
   setRunningUi(false);
-  writeNote(error.message);
-  logEvent("fatal", error.message, "error");
+  writeNote(message);
+  logEvent("fatal", message, "error");
 }
 
 function logEvent(type, detail = "", tone) {

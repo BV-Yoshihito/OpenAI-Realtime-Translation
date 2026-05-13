@@ -10,7 +10,7 @@ cp .env.example .env
 npm start
 ```
 
-サーバーに表示されたURLをブラウザで開きます。`OPENAI_API_KEY` が未設定でも、`Demo` モードでUI、字幕、計測表示を確認できます。
+サーバーに表示されたURLをブラウザで開きます。通常は `http://127.0.0.1:5173/` です。`public/index.html` を `file://` で直接開くと画面確認と `Demo` はできますが、実接続の `Start` は使えません。`OPENAI_API_KEY` が未設定でも、`Demo` モードでUI、字幕、計測表示を確認できます。
 
 ## 実装内容
 
@@ -94,6 +94,13 @@ https://openai-realtime-translation.pages.dev/api/config
 ```
 
 `hasApiKey: true` が出ればAPI設定も正常です。
+
+## よくあるトラブル
+
+- 画面が素のHTMLのように見える: `file://` で直接開いている可能性があります。ローカル実行時は `npm start` 後に `http://127.0.0.1:5173/` を開いてください。
+- `API Error` と出る: `/api/config` または `/api/session` が配信されていません。Cloudflare Pagesの Build output directory が `public` で、`functions/api/config.js` と `functions/api/session.js` がGitHubにpushされているか確認してください。
+- `No API Key` と出る: Cloudflare Pagesの環境変数に `OPENAI_API_KEY` を設定し、再デプロイしてください。
+- マイクやタブ音声が取れない: Chromeのサイト設定、macOSのマイク権限、タブ共有時の「タブの音声も共有」を確認してください。
 
 ## 検証
 
