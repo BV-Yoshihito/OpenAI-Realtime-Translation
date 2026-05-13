@@ -51,6 +51,7 @@ const elements = {
   translatedLive: document.querySelector("#translatedLive"),
   translatedVolume: document.querySelector("#translatedVolume"),
   translatedVolumeValue: document.querySelector("#translatedVolumeValue"),
+  visualMode: document.querySelector("#visualMode"),
   webrtcState: document.querySelector("#webrtcState")
 };
 
@@ -70,6 +71,7 @@ const state = {
   isDemo: false,
   demoVoice: null,
   sessionMode: "dashboard",
+  visualMode: "wave",
   nextSegmentId: 1,
   currentSource: "",
   currentTranslated: "",
@@ -130,6 +132,7 @@ function bindControls() {
   });
   elements.translatedVolume.addEventListener("input", updateVolumes);
   elements.originalVolume.addEventListener("input", updateVolumes);
+  elements.visualMode.addEventListener("change", () => updateVisualMode({ persist: true, announce: true }));
   window.speechSynthesis?.addEventListener("voiceschanged", selectDemoVoice);
   document.querySelectorAll("input[name='sessionMode']").forEach((input) => {
     input.addEventListener("change", () => updateSessionMode({ persist: true, announce: true }));
@@ -149,6 +152,11 @@ function restorePreferences() {
   }
 
   elements.meetingTitle.value = localStorage.getItem("translation.meetingTitle") || "Realtime Meeting";
+  const savedVisual = localStorage.getItem("translation.visualMode") || "wave";
+  if (["wave", "spectrum", "flow"].includes(savedVisual)) {
+    elements.visualMode.value = savedVisual;
+  }
+  updateVisualMode({ persist: false, announce: false });
   updateSessionMode({ persist: false, announce: false });
   updateMeetingMeta();
 }
@@ -201,6 +209,27 @@ function currentMeetingTitle() {
 function updateMeetingMeta() {
   elements.meetingTitleBadge.textContent = currentMeetingTitle();
   elements.segmentCount.textContent = String(state.segments.length);
+}
+
+function updateVisualMode({ persist = true, announce = false } = {}) {
+  state.visualMode = elements.visualMode.value || "wave";
+  document.body.dataset.visual = state.visualMode;
+
+  if (persist) {
+    localStorage.setItem("translation.visualMode", state.visualMode);
+  }
+
+  if (announce) {
+    writeNote(`Visualを${visualModeLabel(state.visualMode)}に切り替えました。`);
+  }
+}
+
+function visualModeLabel(value) {
+  return {
+    wave: "Wave",
+    spectrum: "Spectrum",
+    flow: "Flow"
+  }[value] || "Wave";
 }
 
 async function loadConfig() {
@@ -1007,37 +1036,62 @@ function startSignalLoop() {
   const buffer = new Uint8Array(256);
 
   const render = () => {
-    const width = canvas.width;
-    const height = canvas.height;
+    const now = performance.now();
+    const { width, height } = resizeSignalCanvas(canvas, context);
     context.clearRect(0, 0, width, height);
-    drawSignalBackground(context, width, height);
 
     if (state.analyser) {
       state.analyser.getByteFrequencyData(buffer);
-      drawFrequencyBars(context, buffer, width, height);
-    } else {
-      drawAmbientSignal(context, width, height, performance.now());
     }
 
-    drawTranslationPath(context, width, height, performance.now());
+    drawSignalBackground(context, width, height, state.visualMode);
+
+    if (state.visualMode === "spectrum") {
+      drawSpectrumVisual(context, buffer, width, height, now);
+    } else if (state.visualMode === "flow") {
+      drawFlowVisual(context, buffer, width, height, now);
+    } else {
+      drawWaveVisual(context, buffer, width, height, now);
+    }
+
     state.animationFrame = requestAnimationFrame(render);
   };
 
   render();
 }
 
-function drawSignalBackground(context, width, height) {
-  context.fillStyle = "#111418";
+function resizeSignalCanvas(canvas, context) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, rect.width || canvas.clientWidth || 1);
+  const height = Math.max(1, rect.height || canvas.clientHeight || 1);
+  const nextWidth = Math.round(width * dpr);
+  const nextHeight = Math.round(height * dpr);
+
+  if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+  }
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { width, height };
+}
+
+function drawSignalBackground(context, width, height, mode) {
+  context.fillStyle = mode === "flow" ? "#0f1518" : "#111418";
   context.fillRect(0, 0, width, height);
-  context.strokeStyle = "rgba(255,255,255,0.055)";
+  context.strokeStyle = mode === "spectrum" ? "rgba(255,255,255,0.075)" : "rgba(255,255,255,0.055)";
   context.lineWidth = 1;
-  for (let x = 0; x < width; x += 52) {
+  const columnStep = Math.max(36, Math.min(58, width / 12));
+  const rowStep = Math.max(32, Math.min(46, height / 5));
+
+  for (let x = 0; x < width; x += columnStep) {
     context.beginPath();
     context.moveTo(x, 0);
     context.lineTo(x, height);
     context.stroke();
   }
-  for (let y = 0; y < height; y += 42) {
+  for (let y = 0; y < height; y += rowStep) {
     context.beginPath();
     context.moveTo(0, y);
     context.lineTo(width, y);
@@ -1045,30 +1099,107 @@ function drawSignalBackground(context, width, height) {
   }
 }
 
-function drawFrequencyBars(context, buffer, width, height) {
-  const barCount = 96;
+function drawWaveVisual(context, buffer, width, height, now) {
+  if (state.analyser) {
+    drawFrequencyBars(context, buffer, width, height, { baseY: height - 34, heightScale: 0.42, alpha: 0.48 });
+  }
+  drawAmbientSignal(context, width, height, now);
+  drawTranslationPath(context, width, height, now);
+}
+
+function drawSpectrumVisual(context, buffer, width, height, now) {
+  const centerY = height * 0.56;
+  const count = Math.max(36, Math.min(92, Math.floor(width / 8)));
   const gap = 3;
-  const barWidth = (width - gap * (barCount - 1)) / barCount;
+  const barWidth = Math.max(2, (width - gap * (count - 1)) / count);
+
+  for (let index = 0; index < count; index += 1) {
+    const value = sampleSignalValue(buffer, index, count, now);
+    const barHeight = Math.max(8, value * height * 0.42);
+    const hue = index % 3 === 0 ? "#2dd4bf" : index % 3 === 1 ? "#60a5fa" : "#f59e0b";
+    const x = index * (barWidth + gap);
+    context.fillStyle = hue;
+    context.globalAlpha = 0.24 + value * 0.62;
+    context.fillRect(x, centerY - barHeight, barWidth, barHeight);
+    context.globalAlpha = 0.12 + value * 0.42;
+    context.fillRect(x, centerY + 4, barWidth, barHeight * 0.48);
+  }
+
+  context.globalAlpha = 1;
+  context.strokeStyle = "rgba(255,255,255,0.24)";
+  context.lineWidth = 1.5;
+  context.beginPath();
+  context.moveTo(0, centerY);
+  context.lineTo(width, centerY);
+  context.stroke();
+}
+
+function drawFlowVisual(context, buffer, width, height, now) {
+  const centerX = width * 0.5;
+  const centerY = height * 0.52;
+  const radiusX = width * 0.35;
+  const radiusY = height * 0.26;
+  const nodes = 7;
+
+  context.strokeStyle = "rgba(255,255,255,0.18)";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+  context.stroke();
+
+  for (let index = 0; index < nodes; index += 1) {
+    const t = (now / 4200 + index / nodes) % 1;
+    const angle = t * Math.PI * 2;
+    const value = sampleSignalValue(buffer, index, nodes, now);
+    const x = centerX + Math.cos(angle) * radiusX;
+    const y = centerY + Math.sin(angle) * radiusY;
+    const size = 5 + value * 8;
+
+    context.strokeStyle = index % 2 ? "rgba(45, 212, 191, 0.22)" : "rgba(245, 158, 11, 0.18)";
+    context.beginPath();
+    context.moveTo(centerX, centerY);
+    context.lineTo(x, y);
+    context.stroke();
+
+    context.fillStyle = index % 2 ? "#2dd4bf" : "#f59e0b";
+    context.globalAlpha = state.isRunning ? 0.92 : 0.58;
+    context.beginPath();
+    context.arc(x, y, size, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  context.globalAlpha = 1;
+  context.fillStyle = "rgba(255,255,255,0.78)";
+  context.beginPath();
+  context.arc(centerX, centerY, 6, 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawFrequencyBars(context, buffer, width, height, { baseY, heightScale, alpha }) {
+  const barCount = Math.max(38, Math.min(96, Math.floor(width / 8)));
+  const gap = 3;
+  const barWidth = Math.max(2, (width - gap * (barCount - 1)) / barCount);
   for (let index = 0; index < barCount; index += 1) {
-    const value = buffer[Math.floor((index / barCount) * buffer.length)] / 255;
-    const barHeight = Math.max(8, value * height * 0.62);
+    const value = sampleSignalValue(buffer, index, barCount, performance.now());
+    const barHeight = Math.max(6, value * height * heightScale);
     const hue = index < barCount / 2 ? "#2dd4bf" : "#f59e0b";
     context.fillStyle = hue;
-    context.globalAlpha = 0.28 + value * 0.65;
-    context.fillRect(index * (barWidth + gap), height - barHeight - 38, barWidth, barHeight);
+    context.globalAlpha = alpha * (0.36 + value * 0.64);
+    context.fillRect(index * (barWidth + gap), baseY - barHeight, barWidth, barHeight);
   }
   context.globalAlpha = 1;
 }
 
 function drawAmbientSignal(context, width, height, now) {
-  context.strokeStyle = "rgba(45, 212, 191, 0.72)";
+  const amplitude = Math.max(12, height * 0.12);
+  context.strokeStyle = "rgba(45, 212, 191, 0.78)";
   context.lineWidth = 3;
   context.beginPath();
-  for (let x = 0; x < width; x += 6) {
+  for (let x = 0; x <= width; x += 5) {
     const y =
-      height * 0.55 +
-      Math.sin(x / 38 + now / 640) * 28 +
-      Math.sin(x / 17 + now / 980) * 9;
+      height * 0.58 +
+      Math.sin(x / 38 + now / 640) * amplitude +
+      Math.sin(x / 17 + now / 980) * amplitude * 0.32;
     if (x === 0) {
       context.moveTo(x, y);
     } else {
@@ -1079,25 +1210,37 @@ function drawAmbientSignal(context, width, height, now) {
 }
 
 function drawTranslationPath(context, width, height, now) {
-  const y = height * 0.22;
+  const y = height * 0.23;
+  const margin = Math.min(78, width * 0.12);
   context.strokeStyle = "rgba(255,255,255,0.22)";
   context.lineWidth = 2;
   context.beginPath();
-  context.moveTo(78, y);
-  context.bezierCurveTo(width * 0.32, y - 45, width * 0.68, y + 45, width - 78, y);
+  context.moveTo(margin, y);
+  context.bezierCurveTo(width * 0.32, y - height * 0.13, width * 0.68, y + height * 0.13, width - margin, y);
   context.stroke();
 
   for (let i = 0; i < 5; i += 1) {
-    const t = ((now / 1400 + i * 0.2) % 1);
-    const x = 78 + (width - 156) * t;
+    const t = (now / 1400 + i * 0.2) % 1;
+    const x = margin + (width - margin * 2) * t;
     const pulse = 0.55 + Math.sin(now / 240 + i) * 0.25;
     context.fillStyle = i % 2 ? "rgba(245, 158, 11, 0.9)" : "rgba(45, 212, 191, 0.9)";
     context.globalAlpha = state.isRunning ? 0.9 : 0.42;
     context.beginPath();
-    context.arc(x, y + Math.sin(t * Math.PI * 2) * 22, 5 + pulse * 3, 0, Math.PI * 2);
+    context.arc(x, y + Math.sin(t * Math.PI * 2) * height * 0.07, 5 + pulse * 3, 0, Math.PI * 2);
     context.fill();
   }
   context.globalAlpha = 1;
+}
+
+function sampleSignalValue(buffer, index, count, now) {
+  if (state.analyser) {
+    return buffer[Math.floor((index / count) * buffer.length)] / 255;
+  }
+
+  const wave =
+    Math.sin(now / 520 + index * 0.72) * 0.34 +
+    Math.sin(now / 910 + index * 1.7) * 0.2;
+  return Math.max(0.08, Math.min(1, 0.42 + wave));
 }
 
 function selectedSourceMode() {

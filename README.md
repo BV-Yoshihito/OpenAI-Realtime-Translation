@@ -75,6 +75,26 @@ https://あなたのサイト.pages.dev/api/config
 
 `hasApiKey: true` が出れば、Cloudflare Pages Function が環境変数を読めています。
 
+## 今後のアップデート手順
+
+ローカルで修正してGitHubにpushすると、Cloudflare Pagesが自動で再デプロイします。通常はこの流れだけでOKです。
+
+```bash
+cd "/Users/yoshihito823/Codex/OpenAI-Realtime-Translation"
+npm test
+git add -A
+git commit -m "変更内容を短く書く"
+git push origin feature/meeting-mode-export:main
+```
+
+push後はCloudflare Pagesの `Deployments` で緑のチェックが付けば反映完了です。設定を確認するときは、以下を開きます。
+
+```text
+https://openai-realtime-translation.pages.dev/api/config
+```
+
+`hasApiKey: true` が出ればAPI設定も正常です。
+
 ## 検証
 
 ```bash
