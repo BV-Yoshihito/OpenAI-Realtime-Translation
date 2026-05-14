@@ -17,11 +17,45 @@ const FALLBACK_LANGUAGES = Object.freeze([
   { code: "tr", label: "Turkish", native: "Türkçe", accent: "#be123c" },
   { code: "zh", label: "Chinese", native: "中文", accent: "#ca8a04" }
 ]);
+const QUALITY_PRESETS = Object.freeze([
+  {
+    id: "natural",
+    label: "Natural",
+    description: "Everyday interpretation with faithful, natural wording."
+  },
+  {
+    id: "business",
+    label: "Business Meeting",
+    description: "Polished business language for meetings and client calls."
+  },
+  {
+    id: "technical",
+    label: "Technical",
+    description: "Preserve product names, acronyms, APIs, and technical terms."
+  },
+  {
+    id: "executive",
+    label: "Executive Brief",
+    description: "Concise, formal wording for executive conversations."
+  },
+  {
+    id: "casual",
+    label: "Casual",
+    description: "Natural conversation with a relaxed tone."
+  }
+]);
+const HIGHLIGHT_RULES = Object.freeze([
+  { id: "decision", label: "Decision", pattern: /(decide|decided|approved|agree|agreed|decision|決定|承認|合意|採用)/i },
+  { id: "action", label: "Action", pattern: /(action item|follow up|please|send|share|担当|対応|送って|お願いします|確認します)/i },
+  { id: "question", label: "Question", pattern: /\?|？|(can you|could you|how|what|why|when|どの|どう|なぜ|いつ)/i },
+  { id: "risk", label: "Risk", pattern: /(risk|issue|blocked|blocker|concern|delay|problem|リスク|懸念|課題|問題|遅延)/i }
+]);
 const FALLBACK_CONFIG = Object.freeze({
   hasApiKey: false,
   translationModel: "demo-only",
   inputTranscriptionModel: "demo-only",
-  languages: FALLBACK_LANGUAGES
+  languages: FALLBACK_LANGUAGES,
+  qualityPresets: QUALITY_PRESETS
 });
 
 const elements = {
@@ -37,6 +71,8 @@ const elements = {
   eventCount: document.querySelector("#eventCount"),
   eventLog: document.querySelector("#eventLog"),
   exportFormat: document.querySelector("#exportFormat"),
+  glossary: document.querySelector("#glossary"),
+  highlightCount: document.querySelector("#highlightCount"),
   inputCheckLabel: document.querySelector("#inputCheckLabel"),
   inputTranscription: document.querySelector("#inputTranscription"),
   languageStrip: document.querySelector("#languageStrip"),
@@ -52,6 +88,8 @@ const elements = {
   originalVolume: document.querySelector("#originalVolume"),
   originalVolumeValue: document.querySelector("#originalVolumeValue"),
   outputRate: document.querySelector("#outputRate"),
+  presetBadge: document.querySelector("#presetBadge"),
+  qualityPreset: document.querySelector("#qualityPreset"),
   permissionCheckLabel: document.querySelector("#permissionCheckLabel"),
   runtimeBanner: document.querySelector("#runtimeBanner"),
   runtimeCheckLabel: document.querySelector("#runtimeCheckLabel"),
@@ -63,6 +101,7 @@ const elements = {
   sourceChars: document.querySelector("#sourceChars"),
   sourceHistory: document.querySelector("#sourceHistory"),
   sourceKind: document.querySelector("#sourceKind"),
+  sourceSpeaker: document.querySelector("#sourceSpeaker"),
   sourceLive: document.querySelector("#sourceLive"),
   sourcePlaceholder: document.querySelector("#sourcePlaceholder"),
   sourceVideo: document.querySelector("#sourceVideo"),
@@ -76,6 +115,7 @@ const elements = {
   translatedChars: document.querySelector("#translatedChars"),
   translatedHistory: document.querySelector("#translatedHistory"),
   translatedLive: document.querySelector("#translatedLive"),
+  translatedSpeaker: document.querySelector("#translatedSpeaker"),
   translatedVolume: document.querySelector("#translatedVolume"),
   translatedVolumeValue: document.querySelector("#translatedVolumeValue"),
   visualMode: document.querySelector("#visualMode"),
@@ -102,6 +142,7 @@ const state = {
   demoVoice: null,
   sessionMode: "dashboard",
   visualMode: "wave",
+  qualityPresets: QUALITY_PRESETS,
   nextSegmentId: 1,
   currentSource: "",
   currentTranslated: "",
@@ -120,9 +161,10 @@ const state = {
 
 const demoScript = [
   ["Welcome everyone. Today we are testing a continuous interpretation workflow.", "皆さん、ようこそ。今日は継続的な通訳ワークフローをテストしています。"],
-  ["The model listens while the speaker keeps talking and returns translated speech.", "モデルは話者が話し続けている間も聞き取り、翻訳音声を返します。"],
-  ["Captions, audio routing, and session telemetry are visible in one dashboard.", "字幕、音声ルーティング、セッション計測をひとつのダッシュボードで確認できます。"],
-  ["This makes webinars, calls, and product launches feel much more multilingual.", "これにより、ウェビナー、通話、製品発表がより多言語に感じられます。"]
+  ["We need to decide the launch schedule by Friday.", "金曜日までにローンチ日程を決定する必要があります。"],
+  ["Please send the updated deck after the call as an action item.", "アクション項目として、通話後に更新版の資料を送ってください。"],
+  ["The main risk is latency during larger webinars.", "主なリスクは、大規模なウェビナー中の遅延です。"],
+  ["Can you confirm the product names in the glossary before we share the recording?", "録画を共有する前に、用語集の製品名を確認してもらえますか。"]
 ];
 
 init().catch((error) => {
@@ -156,6 +198,12 @@ function bindControls() {
     localStorage.setItem("translation.meetingTitle", currentMeetingTitle());
     updateMeetingMeta();
   });
+  elements.qualityPreset.addEventListener("change", () => updateTranslationProfile({ persist: true, announce: true }));
+  elements.glossary.addEventListener("input", () => {
+    localStorage.setItem("translation.glossary", currentGlossary());
+  });
+  elements.sourceSpeaker.addEventListener("input", () => updateSpeakerLabels({ persist: true }));
+  elements.translatedSpeaker.addEventListener("input", () => updateSpeakerLabels({ persist: true }));
   elements.showFinalOnly.addEventListener("change", renderLiveCaptions);
   elements.targetLanguage.addEventListener("change", () => {
     const code = elements.targetLanguage.value;
@@ -187,11 +235,15 @@ function restorePreferences() {
   }
 
   elements.meetingTitle.value = localStorage.getItem("translation.meetingTitle") || "Realtime Meeting";
+  elements.glossary.value = localStorage.getItem("translation.glossary") || "";
+  elements.sourceSpeaker.value = localStorage.getItem("translation.sourceSpeaker") || "Speaker";
+  elements.translatedSpeaker.value = localStorage.getItem("translation.translatedSpeaker") || "Interpreter";
   const savedVisual = localStorage.getItem("translation.visualMode") || "wave";
   if (["wave", "spectrum", "flow"].includes(savedVisual)) {
     elements.visualMode.value = savedVisual;
   }
   updateVisualMode({ persist: false, announce: false });
+  updateSpeakerLabels({ persist: false });
   updateSessionMode({ persist: false, announce: false });
   updateMeetingMeta();
 }
@@ -244,6 +296,8 @@ function currentMeetingTitle() {
 function updateMeetingMeta() {
   elements.meetingTitleBadge.textContent = currentMeetingTitle();
   elements.segmentCount.textContent = String(state.segments.length);
+  elements.presetBadge.textContent = currentQualityPreset().label;
+  elements.highlightCount.textContent = String(countHighlightedPairs());
 }
 
 function updateVisualMode({ persist = true, announce = false } = {}) {
@@ -316,6 +370,7 @@ function applyPublicConfig(config, { fileMode = false, configError = false } = {
   elements.apiKeyBadge.style.borderColor = borderColor;
   elements.modelBadge.textContent = config.translationModel || "demo-only";
   populateLanguages(languages);
+  populateQualityPresets(config.qualityPresets || QUALITY_PRESETS);
   updateRuntimeChecks();
 }
 
@@ -444,6 +499,80 @@ function populateLanguages(languages) {
   highlightLanguageChip(elements.targetLanguage.value);
 }
 
+function populateQualityPresets(presets) {
+  const normalized = Array.isArray(presets) && presets.length ? presets : QUALITY_PRESETS;
+  const saved = localStorage.getItem("translation.qualityPreset") || "business";
+  state.qualityPresets = normalized;
+  elements.qualityPreset.replaceChildren();
+
+  for (const preset of normalized) {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.label;
+    option.title = preset.description || preset.label;
+    elements.qualityPreset.append(option);
+  }
+
+  const hasSaved = normalized.some((preset) => preset.id === saved);
+  elements.qualityPreset.value = hasSaved ? saved : normalized[0]?.id || "natural";
+  updateTranslationProfile({ persist: false, announce: false });
+}
+
+function updateTranslationProfile({ persist = true, announce = false } = {}) {
+  const preset = currentQualityPreset();
+  if (persist) {
+    localStorage.setItem("translation.qualityPreset", preset.id);
+  }
+  elements.presetBadge.textContent = preset.label;
+  updateMeetingMeta();
+
+  if (announce) {
+    writeNote(`翻訳品質プリセットを${preset.label}に切り替えました。次のStartからRealtime sessionに反映されます。`);
+  }
+}
+
+function updateSpeakerLabels({ persist = true } = {}) {
+  if (persist) {
+    localStorage.setItem("translation.sourceSpeaker", currentSourceSpeaker());
+    localStorage.setItem("translation.translatedSpeaker", currentTranslatedSpeaker());
+  }
+  renderMeetingFeed();
+  updateMeetingMeta();
+}
+
+function currentQualityPreset() {
+  const id = elements.qualityPreset.value || localStorage.getItem("translation.qualityPreset") || "business";
+  return state.qualityPresets.find((preset) => preset.id === id) || state.qualityPresets[0] || QUALITY_PRESETS[0];
+}
+
+function currentGlossary() {
+  return elements.glossary.value.trim();
+}
+
+function currentSourceSpeaker() {
+  return elements.sourceSpeaker.value.trim() || "Speaker";
+}
+
+function currentTranslatedSpeaker() {
+  return elements.translatedSpeaker.value.trim() || "Interpreter";
+}
+
+function currentTranslationProfile() {
+  const preset = currentQualityPreset();
+  return {
+    preset: {
+      id: preset.id,
+      label: preset.label,
+      description: preset.description || ""
+    },
+    glossary: currentGlossary(),
+    speakers: {
+      source: currentSourceSpeaker(),
+      translated: currentTranslatedSpeaker()
+    }
+  };
+}
+
 async function startSession() {
   if (state.isRunning) {
     return;
@@ -544,7 +673,9 @@ async function createTranslationSession() {
     body: JSON.stringify({
       targetLanguage: elements.targetLanguage.value,
       inputTranscription: elements.inputTranscription.checked,
-      noiseReduction: elements.noiseReduction.value
+      noiseReduction: elements.noiseReduction.value,
+      qualityPreset: currentQualityPreset().id,
+      glossary: currentGlossary()
     })
   });
 
@@ -853,6 +984,8 @@ function createTranscriptSegment(kind, text) {
   return {
     id: state.nextSegmentId++,
     kind,
+    speaker: kind === "source" ? currentSourceSpeaker() : currentTranslatedSpeaker(),
+    qualityPreset: currentQualityPreset().id,
     text,
     at: new Date(),
     startSeconds,
@@ -921,8 +1054,9 @@ function renderMeetingFeed() {
   elements.meetingFeed.replaceChildren();
 
   for (const pair of pairs) {
+    const tags = classifyMeetingPair(pair);
     const node = document.createElement("article");
-    node.className = "meeting-item";
+    node.className = `meeting-item${tags.length ? " is-highlighted" : ""}`;
 
     const heading = document.createElement("div");
     heading.className = "meeting-item-heading";
@@ -933,17 +1067,53 @@ function renderMeetingFeed() {
     label.textContent = `Segment ${pair.index}`;
     heading.append(time, label);
 
+    const tagRow = document.createElement("div");
+    tagRow.className = "meeting-tags";
+    for (const tag of tags) {
+      const tagNode = document.createElement("span");
+      tagNode.className = "meeting-tag";
+      tagNode.textContent = tag.label;
+      tagRow.append(tagNode);
+    }
+
     const source = document.createElement("p");
     source.className = "meeting-source";
-    source.textContent = pair.source?.text || "";
+    appendSpeakerText(source, pair.source?.speaker || currentSourceSpeaker(), pair.source?.text || "");
 
     const translated = document.createElement("p");
     translated.className = "meeting-translated";
-    translated.textContent = pair.translated?.text || "";
+    appendSpeakerText(translated, pair.translated?.speaker || currentTranslatedSpeaker(), pair.translated?.text || "");
 
-    node.append(heading, source, translated);
+    node.append(heading);
+    if (tags.length) {
+      node.append(tagRow);
+    }
+    node.append(source, translated);
     elements.meetingFeed.append(node);
   }
+}
+
+function appendSpeakerText(container, speaker, text) {
+  const speakerNode = document.createElement("span");
+  speakerNode.className = "speaker-name";
+  speakerNode.textContent = `${speaker}: `;
+  const textNode = document.createElement("span");
+  textNode.textContent = text;
+  container.append(speakerNode, textNode);
+}
+
+function classifyMeetingPair(pair) {
+  const text = `${pair.source?.text || ""} ${pair.translated?.text || ""}`;
+  return HIGHLIGHT_RULES.filter((rule) => rule.pattern.test(text));
+}
+
+function countHighlightedPairs() {
+  return buildTranscriptPairs().filter((pair) => classifyMeetingPair(pair).length > 0).length;
+}
+
+function formatPairTags(pair) {
+  const tags = classifyMeetingPair(pair).map((tag) => tag.label);
+  return tags.length ? tags.join(", ") : "-";
 }
 
 function buildTranscriptPairs() {
@@ -969,7 +1139,9 @@ function buildTranscriptPairs() {
       translated,
       startSeconds,
       endSeconds,
-      at: source?.at || translated?.at || new Date()
+      at: source?.at || translated?.at || new Date(),
+      sourceSpeaker: source?.speaker || currentSourceSpeaker(),
+      translatedSpeaker: translated?.speaker || currentTranslatedSpeaker()
     });
   }
 
@@ -1602,28 +1774,45 @@ function buildExportPayload() {
 
 function buildTranscriptText() {
   const pairs = buildTranscriptPairs();
+  const profile = currentTranslationProfile();
+  const highlightedPairs = pairs.filter((pair) => classifyMeetingPair(pair).length > 0);
   const lines = [
     currentMeetingTitle(),
     "Realtime Translation Dashboard",
     `Mode: ${state.sessionMode}`,
     `Source: ${selectedSourceMode()}`,
     `Target: ${elements.targetLanguage.value}`,
+    `Quality preset: ${profile.preset.label}`,
+    `Speakers: ${profile.speakers.source} / ${profile.speakers.translated}`,
     `Generated: ${new Date().toISOString()}`,
     `Duration: ${formatDuration(Math.floor(currentElapsedSeconds()))}`,
-    "",
-    "[Meeting Pairs]"
+    ""
   ];
 
+  if (profile.glossary) {
+    lines.push("[Glossary]", profile.glossary, "");
+  }
+
+  if (highlightedPairs.length) {
+    lines.push("[Highlights]");
+    for (const pair of highlightedPairs) {
+      lines.push(`${formatTimelineTime(pair.startSeconds)} ${formatPairTags(pair)}: ${pair.source?.text || pair.translated?.text || ""}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("[Meeting Pairs]");
   for (const pair of pairs) {
     lines.push(
-      `${formatTimelineTime(pair.startSeconds)} Source: ${pair.source?.text || ""}`,
-      `${formatTimelineTime(pair.startSeconds)} Translated: ${pair.translated?.text || ""}`,
+      `${formatTimelineTime(pair.startSeconds)} Tags: ${formatPairTags(pair)}`,
+      `${pair.sourceSpeaker}: ${pair.source?.text || ""}`,
+      `${pair.translatedSpeaker}: ${pair.translated?.text || ""}`,
       ""
     );
   }
 
   if (state.currentSource || state.currentTranslated) {
-    lines.push("[Live]", `Source: ${state.currentSource}`, `Translated: ${state.currentTranslated}`);
+    lines.push("[Live]", `${profile.speakers.source}: ${state.currentSource}`, `${profile.speakers.translated}: ${state.currentTranslated}`);
   }
 
   return lines.filter((line) => line !== undefined).join("\n").trim() + "\n";
@@ -1631,28 +1820,52 @@ function buildTranscriptText() {
 
 function buildMeetingMarkdown() {
   const pairs = buildTranscriptPairs();
+  const profile = currentTranslationProfile();
+  const highlightedPairs = pairs.filter((pair) => classifyMeetingPair(pair).length > 0);
   const lines = [
     `# ${currentMeetingTitle()}`,
     "",
     `- Mode: ${state.sessionMode}`,
     `- Source: ${selectedSourceMode()}`,
     `- Target: ${elements.targetLanguage.value}`,
+    `- Quality preset: ${profile.preset.label}`,
+    `- Speakers: ${profile.speakers.source} / ${profile.speakers.translated}`,
     `- Generated: ${new Date().toISOString()}`,
-    `- Duration: ${formatDuration(Math.floor(currentElapsedSeconds()))}`,
-    "",
-    "| Time | Source | Translated |",
-    "| --- | --- | --- |"
+    `- Duration: ${formatDuration(Math.floor(currentElapsedSeconds()))}`
   ];
 
+  if (profile.glossary) {
+    lines.push("", "## Glossary", "", "```text", profile.glossary, "```");
+  }
+
+  if (highlightedPairs.length) {
+    lines.push("", "## Highlights", "", "| Time | Tags | Note |", "| --- | --- | --- |");
+    for (const pair of highlightedPairs) {
+      lines.push(
+        `| ${formatTimelineTime(pair.startSeconds)} | ${escapeMarkdownTable(formatPairTags(pair))} | ${escapeMarkdownTable(pair.source?.text || pair.translated?.text || "")} |`
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "## Transcript",
+    "",
+    "| Time | Tags | Source | Translated |",
+    "| --- | --- | --- | --- |"
+  );
+
   for (const pair of pairs) {
+    const sourceText = `${pair.sourceSpeaker}: ${pair.source?.text || ""}`;
+    const translatedText = `${pair.translatedSpeaker}: ${pair.translated?.text || ""}`;
     lines.push(
-      `| ${formatTimelineTime(pair.startSeconds)} | ${escapeMarkdownTable(pair.source?.text || "")} | ${escapeMarkdownTable(pair.translated?.text || "")} |`
+      `| ${formatTimelineTime(pair.startSeconds)} | ${escapeMarkdownTable(formatPairTags(pair))} | ${escapeMarkdownTable(sourceText)} | ${escapeMarkdownTable(translatedText)} |`
     );
   }
 
   if (state.currentSource || state.currentTranslated) {
     lines.push(
-      `| live | ${escapeMarkdownTable(state.currentSource)} | ${escapeMarkdownTable(state.currentTranslated)} |`
+      `| live | - | ${escapeMarkdownTable(`${profile.speakers.source}: ${state.currentSource}`)} | ${escapeMarkdownTable(`${profile.speakers.translated}: ${state.currentTranslated}`)} |`
     );
   }
 
@@ -1697,29 +1910,38 @@ function exportSubtitleSegments() {
 }
 
 function buildSessionJson() {
+  const profile = currentTranslationProfile();
   return {
     title: currentMeetingTitle(),
     mode: state.sessionMode,
     source: selectedSourceMode(),
     targetLanguage: elements.targetLanguage.value,
+    translationProfile: profile,
     generatedAt: new Date().toISOString(),
     durationSeconds: Math.round(currentElapsedSeconds()),
     pairs: buildTranscriptPairs().map((pair) => ({
       index: pair.index,
       startSeconds: roundSeconds(pair.startSeconds),
       endSeconds: roundSeconds(pair.endSeconds),
+      tags: classifyMeetingPair(pair).map((tag) => tag.label),
+      sourceSpeaker: pair.sourceSpeaker,
+      translatedSpeaker: pair.translatedSpeaker,
       source: pair.source?.text || "",
       translated: pair.translated?.text || ""
     })),
     segments: state.segments.map((segment) => ({
       id: segment.id,
       kind: segment.kind,
+      speaker: segment.speaker,
+      qualityPreset: segment.qualityPreset,
       text: segment.text,
       at: segment.at.toISOString(),
       startSeconds: roundSeconds(segment.startSeconds),
       endSeconds: roundSeconds(segment.endSeconds)
     })),
     live: {
+      sourceSpeaker: profile.speakers.source,
+      translatedSpeaker: profile.speakers.translated,
       source: state.currentSource,
       translated: state.currentTranslated
     }

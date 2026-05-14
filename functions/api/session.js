@@ -41,6 +41,8 @@ export async function onRequest({ request, env }) {
       inputTranscriptionModel: env.OPENAI_INPUT_TRANSCRIPTION_MODEL,
       inputTranscription: body.inputTranscription !== false,
       noiseReduction: body.noiseReduction || "near_field",
+      qualityPreset: body.qualityPreset,
+      glossary: body.glossary,
       safetyIdentifier: env.OPENAI_SAFETY_IDENTIFIER || "cloudflare-pages-translation-dashboard"
     });
 

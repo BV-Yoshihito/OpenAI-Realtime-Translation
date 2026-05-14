@@ -14,6 +14,7 @@ test("Cloudflare config function does not leak the API key", async () => {
   assert.equal(body.hasApiKey, true);
   assert.equal("OPENAI_API_KEY" in body, false);
   assert.ok(body.languages.length >= 13);
+  assert.ok(body.qualityPresets.length >= 5);
 });
 
 test("Cloudflare session function validates JSON and target language", async () => {

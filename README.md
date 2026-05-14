@@ -20,14 +20,17 @@ npm start
 - `getUserMedia()` によるマイク音声取得
 - `oai-events` データチャンネル経由の入力/出力字幕イベント処理
 - 翻訳先言語の選択、ノイズ低減、入力文字起こし、音声ミックス、イベントログ、計測表示
-- 会議モード、会議タイトル、原文/翻訳ペアのタイムライン、セグメント数表示
+- 会議モード、会議タイトル、原文/翻訳ペアのタイムライン、セグメント数表示、重要発言ハイライト
+- 翻訳品質プリセット、用語/固有名詞グロッサリー、会議用スピーカーラベル
 - TXT、Markdown、SRT、WebVTT、JSON 形式の字幕/会議ログエクスポート
 
 ## 会議モード
 
 `Meeting` を選択し、会議タイトルと翻訳先言語を設定してから `Start` または `Demo` を押します。
 
-会議モードでは、原文と翻訳をペアにしたタイムラインを表示します。`Export Format` で出力形式を選ぶと、`Copy` と `Export` の内容もその形式に切り替わります。SRT/WebVTT は翻訳字幕中心、Markdown/JSON は原文と翻訳のペアも残します。
+会議モードでは、原文と翻訳をペアにしたタイムラインを表示します。`Quality Preset` で Business Meeting、Technical、Executive Brief などの翻訳方針を選べます。`Glossary / Names` には会社名、商品名、人名などを `原語 = 訳語` の形で入れてください。Start時にRealtime sessionの指示へ反映されます。
+
+`Decision`、`Action`、`Question`、`Risk` に当たる発言は会議ログ上で自動ハイライトされます。`Export Format` で出力形式を選ぶと、`Copy` と `Export` の内容もその形式に切り替わります。SRT/WebVTT は翻訳字幕中心、Markdown/JSON はプリセット、用語集、スピーカー名、ハイライトタグ、原文と翻訳のペアも残します。
 
 ## Netlifyでチームに共有する
 

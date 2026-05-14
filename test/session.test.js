@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   OpenAIRequestError,
   buildClientSecretPayload,
+  buildTranslationInstructions,
   createClientSecret,
+  normalizeQualityPreset,
   normalizeTargetLanguage
 } from "../src/session.js";
 import { publicConfig } from "../src/server.js";
@@ -18,6 +20,23 @@ test("rejects unsupported target languages", () => {
   assert.throws(() => normalizeTargetLanguage("klingon"), /Unsupported target language/);
 });
 
+test("normalizes translation quality presets", () => {
+  assert.equal(normalizeQualityPreset("business").label, "Business Meeting");
+  assert.equal(normalizeQualityPreset("unknown").id, "natural");
+});
+
+test("builds translation instructions with glossary", () => {
+  const instructions = buildTranslationInstructions({
+    targetLanguage: "ja",
+    qualityPreset: "technical",
+    glossary: "Brainverse = ブレインバース\nGPT-5 = GPT-5"
+  });
+
+  assert.match(instructions, /Japanese/);
+  assert.match(instructions, /technical accuracy/i);
+  assert.match(instructions, /Brainverse = ブレインバース/);
+});
+
 test("builds a realtime translation client secret payload", () => {
   const payload = buildClientSecretPayload({
     targetLanguage: "ja",
@@ -30,6 +49,7 @@ test("builds a realtime translation client secret payload", () => {
   assert.deepEqual(payload, {
     session: {
       model: "gpt-realtime-translate",
+      instructions: buildTranslationInstructions({ targetLanguage: "ja" }),
       audio: {
         output: { language: "ja" },
         input: {
@@ -51,6 +71,7 @@ test("omits optional input audio settings when disabled", () => {
   assert.deepEqual(payload.session.audio, {
     output: { language: "es" }
   });
+  assert.match(payload.session.instructions, /Spanish/);
 });
 
 test("createClientSecret calls the OpenAI client secret endpoint", async () => {
@@ -74,7 +95,9 @@ test("createClientSecret calls the OpenAI client secret endpoint", async () => {
   );
   assert.equal(calls[0].init.headers.Authorization, "Bearer sk-test");
   assert.equal(calls[0].init.headers["OpenAI-Safety-Identifier"], "test-user");
-  assert.equal(JSON.parse(calls[0].init.body).session.audio.output.language, "ja");
+  const requestBody = JSON.parse(calls[0].init.body);
+  assert.equal(requestBody.session.audio.output.language, "ja");
+  assert.match(requestBody.session.instructions, /Translate incoming speech/);
 });
 
 test("createClientSecret surfaces OpenAI request errors", async () => {
@@ -97,4 +120,5 @@ test("public config does not leak the API key", () => {
   assert.equal(config.translationModel, "gpt-realtime-translate");
   assert.equal("OPENAI_API_KEY" in config, false);
   assert.ok(config.languages.length >= 13);
+  assert.ok(config.qualityPresets.length >= 5);
 });

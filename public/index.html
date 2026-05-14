@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Realtime Translation Dashboard</title>
-    <link rel="stylesheet" href="styles.css?v=20260513-startup-checks" />
+    <link rel="stylesheet" href="styles.css?v=20260514-meeting-presets" />
   </head>
   <body>
     <div class="app-shell">
@@ -90,6 +90,32 @@
           </label>
 
           <div class="language-strip" id="languageStrip" aria-label="Supported target languages"></div>
+
+          <label class="field">
+            <span>Quality Preset</span>
+            <select id="qualityPreset"></select>
+          </label>
+
+          <label class="field glossary-field">
+            <span>Glossary / Names</span>
+            <textarea
+              id="glossary"
+              rows="4"
+              maxlength="1200"
+              placeholder="Brainverse = ブレインバース&#10;OpenAI Realtime = OpenAI Realtime"
+            ></textarea>
+          </label>
+
+          <div class="speaker-grid" aria-label="Meeting speaker labels">
+            <label class="field compact">
+              <span>Source Speaker</span>
+              <input id="sourceSpeaker" type="text" value="Speaker" maxlength="40" />
+            </label>
+            <label class="field compact">
+              <span>Output Label</span>
+              <input id="translatedSpeaker" type="text" value="Interpreter" maxlength="40" />
+            </label>
+          </div>
 
           <div class="control-row">
             <label class="toggle">
@@ -221,8 +247,16 @@
               <strong id="meetingTitleBadge">Realtime Meeting</strong>
             </div>
             <div>
+              <span>Preset</span>
+              <strong id="presetBadge">Natural</strong>
+            </div>
+            <div>
               <span>Segments</span>
               <strong id="segmentCount">0</strong>
+            </div>
+            <div>
+              <span>Highlights</span>
+              <strong id="highlightCount">0</strong>
             </div>
           </div>
 
@@ -297,6 +331,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260513-startup-checks" defer></script>
+    <script src="app.js?v=20260514-meeting-presets" defer></script>
   </body>
 </html>

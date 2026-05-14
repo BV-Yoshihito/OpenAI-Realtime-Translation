@@ -1,7 +1,8 @@
 import {
   DEFAULT_TRANSCRIPTION_MODEL,
   DEFAULT_TRANSLATION_MODEL,
-  SUPPORTED_OUTPUT_LANGUAGES
+  SUPPORTED_OUTPUT_LANGUAGES,
+  TRANSLATION_QUALITY_PRESETS
 } from "../../src/session.js";
 
 export async function onRequest({ request, env }) {
@@ -14,7 +15,8 @@ export async function onRequest({ request, env }) {
     translationModel: env.OPENAI_TRANSLATION_MODEL || DEFAULT_TRANSLATION_MODEL,
     inputTranscriptionModel:
       env.OPENAI_INPUT_TRANSCRIPTION_MODEL || DEFAULT_TRANSCRIPTION_MODEL,
-    languages: SUPPORTED_OUTPUT_LANGUAGES
+    languages: SUPPORTED_OUTPUT_LANGUAGES,
+    qualityPresets: TRANSLATION_QUALITY_PRESETS
   });
 }
 

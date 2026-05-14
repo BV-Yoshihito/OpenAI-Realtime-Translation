@@ -279,6 +279,11 @@ button {
   box-shadow: var(--shadow);
 }
 
+.stage-panel,
+.transcript-panel {
+  align-self: start;
+}
+
 .controls-panel {
   grid-area: controls;
   padding: 16px;
@@ -422,6 +427,32 @@ input[type="text"] {
 
 input[type="text"] {
   min-width: 0;
+}
+
+textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.glossary-field textarea {
+  min-height: 88px;
+}
+
+.speaker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
 .mode-segmented {
@@ -704,7 +735,7 @@ input[type="range"] {
 
 .meeting-summary {
   display: none;
-  grid-template-columns: 0.6fr 1.4fr 0.6fr;
+  grid-template-columns: 0.6fr 1.4fr 0.9fr 0.6fr 0.7fr;
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -758,6 +789,37 @@ input[type="range"] {
   font-size: 0.74rem;
   font-weight: 780;
   text-transform: uppercase;
+}
+
+.meeting-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 8px;
+}
+
+.meeting-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 999px;
+  background: #eefbf8;
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.meeting-item.is-highlighted {
+  border-color: rgba(200, 117, 8, 0.38);
+  background: #fffdf7;
+}
+
+.speaker-name {
+  color: var(--ink);
+  font-weight: 780;
 }
 
 .meeting-source,
@@ -943,7 +1005,8 @@ body[data-mode="meeting"] .live-caption {
   .preview-grid,
   .transcript-grid,
   .telemetry-panel,
-  .meeting-summary {
+  .meeting-summary,
+  .speaker-grid {
     grid-template-columns: 1fr;
   }
 
@@ -966,6 +1029,10 @@ body[data-mode="meeting"] .live-caption {
   .topbar-actions .button {
     width: 100%;
     padding: 0 10px;
+  }
+
+  .button-row {
+    grid-template-columns: 1fr;
   }
 
   .startup-checks,

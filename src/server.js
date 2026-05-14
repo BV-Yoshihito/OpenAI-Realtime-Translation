@@ -7,6 +7,7 @@ import {
   DEFAULT_TRANSCRIPTION_MODEL,
   OpenAIRequestError,
   SUPPORTED_OUTPUT_LANGUAGES,
+  TRANSLATION_QUALITY_PRESETS,
   createClientSecret,
   normalizeTargetLanguage
 } from "./session.js";
@@ -65,7 +66,8 @@ export function publicConfig(env = process.env) {
     translationModel: env.OPENAI_TRANSLATION_MODEL || DEFAULT_TRANSLATION_MODEL,
     inputTranscriptionModel:
       env.OPENAI_INPUT_TRANSCRIPTION_MODEL || DEFAULT_TRANSCRIPTION_MODEL,
-    languages: SUPPORTED_OUTPUT_LANGUAGES
+    languages: SUPPORTED_OUTPUT_LANGUAGES,
+    qualityPresets: TRANSLATION_QUALITY_PRESETS
   };
 }
 
@@ -112,6 +114,8 @@ async function handleSessionRequest(request, response, { env, fetchImpl }) {
       inputTranscriptionModel: env.OPENAI_INPUT_TRANSCRIPTION_MODEL,
       inputTranscription: body.inputTranscription !== false,
       noiseReduction: body.noiseReduction || "near_field",
+      qualityPreset: body.qualityPreset,
+      glossary: body.glossary,
       safetyIdentifier: env.OPENAI_SAFETY_IDENTIFIER || "local-translation-dashboard",
       fetchImpl
     });

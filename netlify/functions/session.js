@@ -41,6 +41,8 @@ export async function handler(event) {
       inputTranscriptionModel: process.env.OPENAI_INPUT_TRANSCRIPTION_MODEL,
       inputTranscription: body.inputTranscription !== false,
       noiseReduction: body.noiseReduction || "near_field",
+      qualityPreset: body.qualityPreset,
+      glossary: body.glossary,
       safetyIdentifier: process.env.OPENAI_SAFETY_IDENTIFIER || "netlify-translation-dashboard"
     });
 
