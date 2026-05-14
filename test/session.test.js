@@ -49,7 +49,6 @@ test("builds a realtime translation client secret payload", () => {
   assert.deepEqual(payload, {
     session: {
       model: "gpt-realtime-translate",
-      instructions: buildTranslationInstructions({ targetLanguage: "ja" }),
       audio: {
         output: { language: "ja" },
         input: {
@@ -71,7 +70,7 @@ test("omits optional input audio settings when disabled", () => {
   assert.deepEqual(payload.session.audio, {
     output: { language: "es" }
   });
-  assert.match(payload.session.instructions, /Spanish/);
+  assert.equal("instructions" in payload.session, false);
 });
 
 test("createClientSecret calls the OpenAI client secret endpoint", async () => {
@@ -97,7 +96,7 @@ test("createClientSecret calls the OpenAI client secret endpoint", async () => {
   assert.equal(calls[0].init.headers["OpenAI-Safety-Identifier"], "test-user");
   const requestBody = JSON.parse(calls[0].init.body);
   assert.equal(requestBody.session.audio.output.language, "ja");
-  assert.match(requestBody.session.instructions, /Translate incoming speech/);
+  assert.equal("instructions" in requestBody.session, false);
 });
 
 test("createClientSecret surfaces OpenAI request errors", async () => {

@@ -164,12 +164,6 @@ export function buildClientSecretPayload({
   const audio = {
     output: { language: outputLanguage }
   };
-  const instructions = buildTranslationInstructions({
-    targetLanguage: outputLanguage,
-    qualityPreset,
-    glossary
-  });
-
   if (Object.keys(inputAudio).length > 0) {
     audio.input = inputAudio;
   }
@@ -177,7 +171,6 @@ export function buildClientSecretPayload({
   return {
     session: {
       model: model || DEFAULT_TRANSLATION_MODEL,
-      instructions,
       audio
     }
   };

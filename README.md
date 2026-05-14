@@ -28,7 +28,7 @@ npm start
 
 `Meeting` を選択し、会議タイトルと翻訳先言語を設定してから `Start` または `Demo` を押します。
 
-会議モードでは、原文と翻訳をペアにしたタイムラインを表示します。`Quality Preset` で Business Meeting、Technical、Executive Brief などの翻訳方針を選べます。`Glossary / Names` には会社名、商品名、人名などを `原語 = 訳語` の形で入れてください。Start時にRealtime sessionの指示へ反映されます。
+会議モードでは、原文と翻訳をペアにしたタイムラインを表示します。`Quality Preset` で Business Meeting、Technical、Executive Brief などの会議ログ用プロファイルを選べます。`Glossary / Names` には会社名、商品名、人名などを `原語 = 訳語` の形で入れてください。現在の Realtime Translation 専用APIはカスタム指示を受け付けないため、これらは会議ログとエクスポートに保存されます。
 
 `Decision`、`Action`、`Question`、`Risk` に当たる発言は会議ログ上で自動ハイライトされます。`Export Format` で出力形式を選ぶと、`Copy` と `Export` の内容もその形式に切り替わります。SRT/WebVTT は翻訳字幕中心、Markdown/JSON はプリセット、用語集、スピーカー名、ハイライトタグ、原文と翻訳のペアも残します。
 
