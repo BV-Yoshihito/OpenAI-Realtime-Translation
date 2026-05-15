@@ -1,2 +1,3 @@
 /api/config /.netlify/functions/config 200
 /api/session /.netlify/functions/session 200
+/api/minutes /.netlify/functions/minutes 200

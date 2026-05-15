@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Realtime Translation Dashboard</title>
-    <link rel="stylesheet" href="styles.css?v=20260514-meeting-presets" />
+    <link rel="stylesheet" href="styles.css?v=20260515-meeting-workflow" />
   </head>
   <body>
     <div class="app-shell">
@@ -260,7 +260,43 @@
             </div>
           </div>
 
+          <div class="readiness-grid" id="readinessGrid" aria-label="Meeting readiness">
+            <div data-ready="api">
+              <span>API</span>
+              <strong id="readyApi">Checking</strong>
+            </div>
+            <div data-ready="input">
+              <span>Input</span>
+              <strong id="readyInput">Tab</strong>
+            </div>
+            <div data-ready="permission">
+              <span>Permission</span>
+              <strong id="readyPermission">On Start</strong>
+            </div>
+            <div data-ready="transcript">
+              <span>Transcript</span>
+              <strong id="readyTranscript">On</strong>
+            </div>
+            <div data-ready="minutes">
+              <span>Minutes AI</span>
+              <strong id="readyMinutes">Ready</strong>
+            </div>
+          </div>
+
           <div class="meeting-feed" id="meetingFeed" aria-live="polite"></div>
+
+          <div class="minutes-panel" id="minutesPanel" aria-label="AI meeting minutes">
+            <div class="block-heading">
+              <span>AI Minutes</span>
+              <strong id="minutesStatus">Ready</strong>
+            </div>
+            <div class="minutes-actions">
+              <button class="button primary" id="generateMinutesButton" type="button">Generate Minutes</button>
+              <button class="button ghost" id="copyMinutesButton" type="button" disabled>Copy Minutes</button>
+              <button class="button ghost" id="downloadMinutesButton" type="button" disabled>Export Minutes</button>
+            </div>
+            <div class="minutes-output is-empty" id="minutesOutput">No minutes yet</div>
+          </div>
 
           <div class="transcript-grid">
             <article class="transcript-column" aria-labelledby="sourceTranscriptTitle">
@@ -331,6 +367,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260514-meeting-presets" defer></script>
+    <script src="app.js?v=20260515-meeting-workflow" defer></script>
   </body>
 </html>

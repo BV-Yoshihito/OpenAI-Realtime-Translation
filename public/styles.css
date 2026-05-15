@@ -764,6 +764,53 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.readiness-grid {
+  display: none;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.readiness-grid div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.readiness-grid div[data-state="good"] {
+  border-color: rgba(21, 128, 61, 0.3);
+}
+
+.readiness-grid div[data-state="warn"] {
+  border-color: rgba(200, 117, 8, 0.36);
+  background: #fffaf0;
+}
+
+.readiness-grid div[data-state="error"] {
+  border-color: rgba(180, 35, 85, 0.32);
+  background: #fff5f8;
+}
+
+.readiness-grid span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.readiness-grid strong {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .meeting-feed {
   display: none;
   gap: 8px;
@@ -842,7 +889,9 @@ input[type="range"] {
 }
 
 body[data-mode="meeting"] .meeting-summary,
-body[data-mode="meeting"] .meeting-feed {
+body[data-mode="meeting"] .readiness-grid,
+body[data-mode="meeting"] .meeting-feed,
+body[data-mode="meeting"] .minutes-panel {
   display: grid;
 }
 
@@ -852,6 +901,98 @@ body[data-mode="meeting"] .transcript-column {
 
 body[data-mode="meeting"] .live-caption {
   min-height: 70px;
+}
+
+.minutes-panel {
+  display: none;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.minutes-actions {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.75fr) minmax(120px, 0.75fr);
+  gap: 8px;
+}
+
+.minutes-output {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f8f6;
+}
+
+.minutes-output.is-empty {
+  min-height: 84px;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 720;
+}
+
+.minutes-section {
+  display: grid;
+  gap: 7px;
+}
+
+.minutes-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.minutes-section p,
+.minutes-section li,
+.minutes-section pre {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.minutes-section ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.minutes-section pre {
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+  white-space: pre-wrap;
+}
+
+.action-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.action-card strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.action-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
 }
 
 .metric-grid {
@@ -1006,6 +1147,7 @@ body[data-mode="meeting"] .live-caption {
   .transcript-grid,
   .telemetry-panel,
   .meeting-summary,
+  .readiness-grid,
   .speaker-grid {
     grid-template-columns: 1fr;
   }
@@ -1031,7 +1173,8 @@ body[data-mode="meeting"] .live-caption {
     padding: 0 10px;
   }
 
-  .button-row {
+  .button-row,
+  .minutes-actions {
     grid-template-columns: 1fr;
   }
 

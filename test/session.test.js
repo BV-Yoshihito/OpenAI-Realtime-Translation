@@ -120,4 +120,5 @@ test("public config does not leak the API key", () => {
   assert.equal("OPENAI_API_KEY" in config, false);
   assert.ok(config.languages.length >= 13);
   assert.ok(config.qualityPresets.length >= 5);
+  assert.equal(config.minutesModel, "gpt-5.4-mini");
 });

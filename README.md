@@ -21,8 +21,9 @@ npm start
 - `oai-events` データチャンネル経由の入力/出力字幕イベント処理
 - 翻訳先言語の選択、ノイズ低減、入力文字起こし、音声ミックス、イベントログ、計測表示
 - 会議モード、会議タイトル、原文/翻訳ペアのタイムライン、セグメント数表示、重要発言ハイライト
+- 会議前チェック、Minutes AI、会議後の要約/決定事項/ToDo/リスク抽出
 - 翻訳品質プリセット、用語/固有名詞グロッサリー、会議用スピーカーラベル
-- TXT、Markdown、SRT、WebVTT、JSON 形式の字幕/会議ログエクスポート
+- TXT、Markdown、SRT、WebVTT、JSON 形式の字幕/会議ログ/AI議事録エクスポート
 
 ## 会議モード
 
@@ -30,7 +31,9 @@ npm start
 
 会議モードでは、原文と翻訳をペアにしたタイムラインを表示します。`Quality Preset` で Business Meeting、Technical、Executive Brief などの会議ログ用プロファイルを選べます。`Glossary / Names` には会社名、商品名、人名などを `原語 = 訳語` の形で入れてください。現在の Realtime Translation 専用APIはカスタム指示を受け付けないため、これらは会議ログとエクスポートに保存されます。
 
-`Decision`、`Action`、`Question`、`Risk` に当たる発言は会議ログ上で自動ハイライトされます。`Export Format` で出力形式を選ぶと、`Copy` と `Export` の内容もその形式に切り替わります。SRT/WebVTT は翻訳字幕中心、Markdown/JSON はプリセット、用語集、スピーカー名、ハイライトタグ、原文と翻訳のペアも残します。
+`Decision`、`Action`、`Question`、`Risk` に当たる発言は会議ログ上で自動ハイライトされます。`Generate Minutes` を押すと、保存された会議ログをサーバー側の Responses API に送り、要約、決定事項、ToDo、質問、リスク、フォローアップ文面を生成します。APIが使えない場合はローカル下書きを表示します。
+
+`Export Format` で出力形式を選ぶと、`Copy` と `Export` の内容もその形式に切り替わります。SRT/WebVTT は翻訳字幕中心、Markdown/JSON はプリセット、用語集、スピーカー名、ハイライトタグ、原文と翻訳のペア、生成済みAI議事録も残します。
 
 ## Netlifyでチームに共有する
 
@@ -44,6 +47,7 @@ npm start
    - 必須: `OPENAI_API_KEY`
    - 任意: `OPENAI_TRANSLATION_MODEL`
    - 任意: `OPENAI_INPUT_TRANSCRIPTION_MODEL`
+   - 任意: `OPENAI_MINUTES_MODEL`
    - 任意: `OPENAI_SAFETY_IDENTIFIER`
 4. デプロイ後、発行されたNetlify URLをチームに共有します。
 
@@ -65,6 +69,7 @@ Netlifyの無料クレジット上限に当たった場合は、Cloudflare Pages
    - 必須: `OPENAI_API_KEY`
    - 任意: `OPENAI_TRANSLATION_MODEL`
    - 任意: `OPENAI_INPUT_TRANSCRIPTION_MODEL`
+   - 任意: `OPENAI_MINUTES_MODEL`
    - 任意: `OPENAI_SAFETY_IDENTIFIER`
 6. デプロイ後、発行された `*.pages.dev` URLをチームに共有します。
 
@@ -96,12 +101,12 @@ push後はCloudflare Pagesの `Deployments` で緑のチェックが付けば反
 https://openai-realtime-translation.pages.dev/api/config
 ```
 
-`hasApiKey: true` が出ればAPI設定も正常です。
+`hasApiKey: true` と `minutesModel` が出ればAPI設定も正常です。
 
 ## よくあるトラブル
 
 - 画面が素のHTMLのように見える: `file://` で直接開いている可能性があります。ローカル実行時は `npm start` 後に `http://127.0.0.1:5173/` を開いてください。
-- `API Error` と出る: `/api/config` または `/api/session` が配信されていません。Cloudflare Pagesの Build output directory が `public` で、`functions/api/config.js` と `functions/api/session.js` がGitHubにpushされているか確認してください。
+- `API Error` と出る: `/api/config`、`/api/session`、または `/api/minutes` が配信されていません。Cloudflare Pagesの Build output directory が `public` で、`functions/api/config.js`、`functions/api/session.js`、`functions/api/minutes.js` がGitHubにpushされているか確認してください。
 - `No API Key` と出る: Cloudflare Pagesの環境変数に `OPENAI_API_KEY` を設定し、再デプロイしてください。
 - マイクやタブ音声が取れない: Chromeのサイト設定、macOSのマイク権限、タブ共有時の「タブの音声も共有」を確認してください。
 

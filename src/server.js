@@ -3,6 +3,10 @@ import { createReadStream, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  DEFAULT_MINUTES_MODEL,
+  createMeetingMinutes
+} from "./minutes.js";
+import {
   DEFAULT_TRANSLATION_MODEL,
   DEFAULT_TRANSCRIPTION_MODEL,
   OpenAIRequestError,
@@ -47,6 +51,11 @@ export function buildServer({
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/minutes") {
+        await handleMinutesRequest(request, response, { env, fetchImpl });
+        return;
+      }
+
       if (request.method === "GET" || request.method === "HEAD") {
         await serveStatic(url.pathname, response, { method: request.method, publicRoot });
         return;
@@ -66,6 +75,7 @@ export function publicConfig(env = process.env) {
     translationModel: env.OPENAI_TRANSLATION_MODEL || DEFAULT_TRANSLATION_MODEL,
     inputTranscriptionModel:
       env.OPENAI_INPUT_TRANSCRIPTION_MODEL || DEFAULT_TRANSCRIPTION_MODEL,
+    minutesModel: env.OPENAI_MINUTES_MODEL || DEFAULT_MINUTES_MODEL,
     languages: SUPPORTED_OUTPUT_LANGUAGES,
     qualityPresets: TRANSLATION_QUALITY_PRESETS
   };
@@ -77,6 +87,46 @@ export function loadEnvFiles(env = process.env, cwd = process.cwd()) {
     if (existsSync(candidate)) {
       loadEnvFile(candidate, env);
     }
+  }
+}
+
+async function handleMinutesRequest(request, response, { env, fetchImpl }) {
+  let body;
+  try {
+    body = await readJson(request);
+  } catch (error) {
+    sendJson(response, 400, {
+      error: error instanceof Error ? error.message : "Invalid JSON body."
+    });
+    return;
+  }
+
+  if (!env.OPENAI_API_KEY) {
+    sendJson(response, 500, { error: "OPENAI_API_KEY is not configured." });
+    return;
+  }
+
+  try {
+    const result = await createMeetingMinutes({
+      apiKey: env.OPENAI_API_KEY,
+      meeting: body.meeting || body,
+      model: env.OPENAI_MINUTES_MODEL,
+      safetyIdentifier: env.OPENAI_SAFETY_IDENTIFIER || "local-translation-dashboard-minutes",
+      fetchImpl
+    });
+
+    sendJson(response, 200, result);
+  } catch (error) {
+    if (error instanceof OpenAIRequestError) {
+      sendJson(response, 502, {
+        error: error.message,
+        status: error.status,
+        details: error.body
+      });
+      return;
+    }
+
+    throw error;
   }
 }
 

@@ -54,6 +54,7 @@ const FALLBACK_CONFIG = Object.freeze({
   hasApiKey: false,
   translationModel: "demo-only",
   inputTranscriptionModel: "demo-only",
+  minutesModel: "demo-only",
   languages: FALLBACK_LANGUAGES,
   qualityPresets: QUALITY_PRESETS
 });
@@ -65,13 +66,16 @@ const elements = {
   audioState: document.querySelector("#audioState"),
   clearButton: document.querySelector("#clearButton"),
   connectionStatus: document.querySelector("#connectionStatus"),
+  copyMinutesButton: document.querySelector("#copyMinutesButton"),
   copyButton: document.querySelector("#copyButton"),
   demoButton: document.querySelector("#demoButton"),
   downloadButton: document.querySelector("#downloadButton"),
+  downloadMinutesButton: document.querySelector("#downloadMinutesButton"),
   eventCount: document.querySelector("#eventCount"),
   eventLog: document.querySelector("#eventLog"),
   exportFormat: document.querySelector("#exportFormat"),
   glossary: document.querySelector("#glossary"),
+  generateMinutesButton: document.querySelector("#generateMinutesButton"),
   highlightCount: document.querySelector("#highlightCount"),
   inputCheckLabel: document.querySelector("#inputCheckLabel"),
   inputTranscription: document.querySelector("#inputTranscription"),
@@ -82,6 +86,8 @@ const elements = {
   meetingTitle: document.querySelector("#meetingTitle"),
   meetingTitleBadge: document.querySelector("#meetingTitleBadge"),
   modeBadge: document.querySelector("#modeBadge"),
+  minutesOutput: document.querySelector("#minutesOutput"),
+  minutesStatus: document.querySelector("#minutesStatus"),
   modelBadge: document.querySelector("#modelBadge"),
   noiseReduction: document.querySelector("#noiseReduction"),
   originalAudio: document.querySelector("#originalAudio"),
@@ -92,6 +98,11 @@ const elements = {
   qualityPreset: document.querySelector("#qualityPreset"),
   permissionCheckLabel: document.querySelector("#permissionCheckLabel"),
   runtimeBanner: document.querySelector("#runtimeBanner"),
+  readyApi: document.querySelector("#readyApi"),
+  readyInput: document.querySelector("#readyInput"),
+  readyMinutes: document.querySelector("#readyMinutes"),
+  readyPermission: document.querySelector("#readyPermission"),
+  readyTranscript: document.querySelector("#readyTranscript"),
   runtimeCheckLabel: document.querySelector("#runtimeCheckLabel"),
   segmentCount: document.querySelector("#segmentCount"),
   sessionClock: document.querySelector("#sessionClock"),
@@ -143,6 +154,9 @@ const state = {
   sessionMode: "dashboard",
   visualMode: "wave",
   qualityPresets: QUALITY_PRESETS,
+  minutesModel: "",
+  minutes: null,
+  isGeneratingMinutes: false,
   nextSegmentId: 1,
   currentSource: "",
   currentTranslated: "",
@@ -194,6 +208,10 @@ function bindControls() {
   elements.clearButton.addEventListener("click", resetTranscripts);
   elements.copyButton.addEventListener("click", copyTranscripts);
   elements.downloadButton.addEventListener("click", downloadTranscripts);
+  elements.generateMinutesButton.addEventListener("click", () => generateMinutes().catch(handleMinutesError));
+  elements.copyMinutesButton.addEventListener("click", copyMinutes);
+  elements.downloadMinutesButton.addEventListener("click", downloadMinutes);
+  elements.exportFormat.addEventListener("change", updateMeetingReadiness);
   elements.meetingTitle.addEventListener("input", () => {
     localStorage.setItem("translation.meetingTitle", currentMeetingTitle());
     updateMeetingMeta();
@@ -205,11 +223,13 @@ function bindControls() {
   elements.sourceSpeaker.addEventListener("input", () => updateSpeakerLabels({ persist: true }));
   elements.translatedSpeaker.addEventListener("input", () => updateSpeakerLabels({ persist: true }));
   elements.showFinalOnly.addEventListener("change", renderLiveCaptions);
+  elements.inputTranscription.addEventListener("change", updateMeetingReadiness);
   elements.targetLanguage.addEventListener("change", () => {
     const code = elements.targetLanguage.value;
     localStorage.setItem("translation.targetLanguage", code);
     elements.targetBadge.textContent = code.toUpperCase();
     highlightLanguageChip(code);
+    updateMeetingReadiness();
   });
   elements.translatedVolume.addEventListener("input", updateVolumes);
   elements.originalVolume.addEventListener("input", updateVolumes);
@@ -223,6 +243,7 @@ function bindControls() {
       elements.sourceKind.textContent = selectedSourceMode() === "tab" ? "Tab" : "Mic";
       markPermissionState("On Start", "warn");
       updateRuntimeChecks();
+      updateMeetingReadiness();
     });
   });
 }
@@ -246,6 +267,7 @@ function restorePreferences() {
   updateSpeakerLabels({ persist: false });
   updateSessionMode({ persist: false, announce: false });
   updateMeetingMeta();
+  updateMeetingReadiness();
 }
 
 function updateSessionMode({ persist = true, announce = false } = {}) {
@@ -369,9 +391,11 @@ function applyPublicConfig(config, { fileMode = false, configError = false } = {
   elements.apiKeyBadge.textContent = label;
   elements.apiKeyBadge.style.borderColor = borderColor;
   elements.modelBadge.textContent = config.translationModel || "demo-only";
+  state.minutesModel = config.minutesModel || "demo-only";
   populateLanguages(languages);
   populateQualityPresets(config.qualityPresets || QUALITY_PRESETS);
   updateRuntimeChecks();
+  updateMeetingReadiness();
 }
 
 function describeConfigHttpError(status) {
@@ -456,6 +480,7 @@ function updateRuntimeChecks() {
   setStartupCheckState("input", "good");
   elements.permissionCheckLabel.textContent = state.permissionState.label;
   setStartupCheckState("permission", state.permissionState.tone);
+  updateMeetingReadiness();
 }
 
 function setStartupCheckState(key, tone) {
@@ -468,6 +493,26 @@ function setStartupCheckState(key, tone) {
 function markPermissionState(label, tone = "warn") {
   state.permissionState = { label, tone };
   updateRuntimeChecks();
+}
+
+function updateMeetingReadiness() {
+  setReadiness("api", state.config?.hasApiKey && !state.configLoadError ? "Ready" : state.configLoadError ? "Error" : "Demo", state.config?.hasApiKey && !state.configLoadError ? "good" : state.configLoadError ? "error" : "warn");
+  setReadiness("input", selectedSourceMode() === "mic" ? "Mic" : "Tab", "good");
+  setReadiness("permission", state.permissionState.label, state.permissionState.tone);
+  setReadiness("transcript", elements.inputTranscription.checked ? "On" : "Off", elements.inputTranscription.checked ? "good" : "warn");
+  const minutesReady = state.config?.hasApiKey && !state.configLoadError;
+  setReadiness("minutes", minutesReady ? state.minutesModel || "Ready" : "Local draft", minutesReady ? "good" : "warn");
+}
+
+function setReadiness(key, label, tone) {
+  const labelNode = elements[`ready${key.charAt(0).toUpperCase()}${key.slice(1)}`];
+  const container = document.querySelector(`[data-ready='${key}']`);
+  if (labelNode) {
+    labelNode.textContent = label;
+  }
+  if (container) {
+    container.dataset.state = tone;
+  }
 }
 
 function populateLanguages(languages) {
@@ -527,7 +572,7 @@ function updateTranslationProfile({ persist = true, announce = false } = {}) {
   updateMeetingMeta();
 
   if (announce) {
-    writeNote(`翻訳品質プリセットを${preset.label}に切り替えました。次のStartからRealtime sessionに反映されます。`);
+    writeNote(`会議ログ用プロファイルを${preset.label}に切り替えました。`);
   }
 }
 
@@ -538,6 +583,7 @@ function updateSpeakerLabels({ persist = true } = {}) {
   }
   renderMeetingFeed();
   updateMeetingMeta();
+  updateMeetingReadiness();
 }
 
 function currentQualityPreset() {
@@ -974,6 +1020,7 @@ function finalizeTranscript(kind, overrideText = "") {
   renderHistory();
   renderMeetingFeed();
   updateMeetingMeta();
+  updateMeetingReadiness();
 }
 
 function createTranscriptSegment(kind, text) {
@@ -1328,6 +1375,7 @@ function resetTranscripts() {
   state.nextSegmentId = 1;
   state.metrics.inputChars = 0;
   state.metrics.outputChars = 0;
+  clearMinutes();
   renderLiveCaptions();
   renderHistory();
   updateTranscriptStats();
@@ -1735,6 +1783,293 @@ function downloadTranscripts() {
   writeNote(`${payload.label}を書き出しました。`);
 }
 
+async function generateMinutes() {
+  if (state.isGeneratingMinutes) {
+    return;
+  }
+
+  finalizeTranscript("source");
+  finalizeTranscript("translated");
+  const meeting = buildSessionJson({ includeMinutes: false });
+  if (!meeting.pairs.length) {
+    renderMinutes(buildLocalMinutes({ reason: "empty" }), { model: "local" });
+    writeNote("議事録用の字幕がまだありません。DemoまたはStartで字幕を作成してください。");
+    return;
+  }
+
+  setMinutesBusy(true);
+  renderMinutesPlaceholder("Generating");
+  try {
+    let result;
+    if (state.config?.hasApiKey && !state.configLoadError && !state.isFileMode) {
+      const response = await fetch("/api/minutes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meeting })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const details = payload?.details?.error?.message || payload?.error || `Minutes failed: ${response.status}`;
+        throw new Error(details);
+      }
+      result = payload;
+    } else {
+      result = { model: "local", minutes: buildLocalMinutes() };
+    }
+
+    renderMinutes(result.minutes, { model: result.model || state.minutesModel || "minutes" });
+    writeNote("AI議事録を生成しました。Copy MinutesまたはExport Minutesで共有できます。");
+    logEvent("minutes.generated", result.model || "minutes", "good");
+  } catch (error) {
+    const localMinutes = buildLocalMinutes({ reason: "fallback" });
+    renderMinutes(localMinutes, { model: "local fallback" });
+    throw error;
+  } finally {
+    setMinutesBusy(false);
+  }
+}
+
+function handleMinutesError(error) {
+  const message = getErrorMessage(error);
+  elements.minutesStatus.textContent = "Local Draft";
+  writeNote(`AI議事録APIでエラーが発生したためローカル下書きを表示しました。詳細: ${message}`);
+  logEvent("minutes.error", message, "error");
+}
+
+function setMinutesBusy(isBusy) {
+  state.isGeneratingMinutes = isBusy;
+  elements.generateMinutesButton.disabled = isBusy;
+  elements.minutesStatus.textContent = isBusy ? "Generating" : state.minutes ? "Ready" : "Ready";
+}
+
+function renderMinutesPlaceholder(label) {
+  elements.minutesOutput.replaceChildren(label);
+  elements.minutesOutput.classList.add("is-empty");
+  elements.copyMinutesButton.disabled = true;
+  elements.downloadMinutesButton.disabled = true;
+}
+
+function renderMinutes(minutes, { model = "" } = {}) {
+  state.minutes = normalizeClientMinutes(minutes, model);
+  elements.minutesStatus.textContent = model;
+  elements.minutesOutput.classList.remove("is-empty");
+  elements.minutesOutput.replaceChildren();
+
+  appendMinutesSection("Summary", state.minutes.summary || "-");
+  appendMinutesList("Decisions", state.minutes.decisions);
+  appendActionItems(state.minutes.actionItems);
+  appendMinutesList("Questions", state.minutes.questions);
+  appendMinutesList("Risks", state.minutes.risks);
+  appendMinutesSection("Meeting Health", state.minutes.meetingHealth || "-");
+  appendMinutesSection("Follow-up Email", state.minutes.followUpEmail || "-", { pre: true });
+
+  elements.copyMinutesButton.disabled = false;
+  elements.downloadMinutesButton.disabled = false;
+  updateMeetingReadiness();
+}
+
+function appendMinutesSection(title, text, { pre = false } = {}) {
+  const section = document.createElement("section");
+  section.className = "minutes-section";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const body = document.createElement(pre ? "pre" : "p");
+  body.textContent = text;
+  section.append(heading, body);
+  elements.minutesOutput.append(section);
+}
+
+function appendMinutesList(title, items) {
+  const section = document.createElement("section");
+  section.className = "minutes-section";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const list = document.createElement("ul");
+  const normalized = items.length ? items : ["-"];
+  for (const item of normalized) {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.append(li);
+  }
+  section.append(heading, list);
+  elements.minutesOutput.append(section);
+}
+
+function appendActionItems(items) {
+  const section = document.createElement("section");
+  section.className = "minutes-section";
+  const heading = document.createElement("h3");
+  heading.textContent = "Action Items";
+  section.append(heading);
+
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "-";
+    section.append(empty);
+  }
+
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "action-card";
+    const task = document.createElement("strong");
+    task.textContent = item.task || "-";
+    const meta = document.createElement("p");
+    meta.className = "action-meta";
+    meta.textContent = `Owner: ${item.owner || "-"} / Due: ${item.due || "-"}`;
+    const evidence = document.createElement("p");
+    evidence.textContent = item.evidence || "";
+    card.append(task, meta, evidence);
+    section.append(card);
+  }
+
+  elements.minutesOutput.append(section);
+}
+
+function normalizeClientMinutes(minutes = {}, model = "") {
+  return {
+    model,
+    summary: String(minutes.summary || ""),
+    decisions: normalizeTextList(minutes.decisions),
+    actionItems: Array.isArray(minutes.actionItems)
+      ? minutes.actionItems.map((item) => ({
+          task: String(item?.task || ""),
+          owner: String(item?.owner || ""),
+          due: String(item?.due || ""),
+          evidence: String(item?.evidence || "")
+        }))
+      : [],
+    questions: normalizeTextList(minutes.questions),
+    risks: normalizeTextList(minutes.risks),
+    followUpEmail: String(minutes.followUpEmail || ""),
+    meetingHealth: String(minutes.meetingHealth || "")
+  };
+}
+
+function normalizeTextList(value) {
+  return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : [];
+}
+
+function buildLocalMinutes({ reason = "" } = {}) {
+  const pairs = buildTranscriptPairs();
+  const highlightedPairs = pairs.filter((pair) => classifyMeetingPair(pair).length > 0);
+  const textFor = (pair) => pair.translated?.text || pair.source?.text || "";
+  const withTag = (tag) => highlightedPairs
+    .filter((pair) => classifyMeetingPair(pair).some((item) => item.id === tag))
+    .map((pair) => `${formatTimelineTime(pair.startSeconds)} ${textFor(pair)}`)
+    .filter(Boolean)
+    .slice(0, 8);
+
+  return {
+    summary: reason === "empty"
+      ? "字幕がまだないため、議事録を生成できません。"
+      : pairs.slice(-5).map(textFor).filter(Boolean).join(" ") || "会議ログからローカル下書きを作成しました。",
+    decisions: withTag("decision"),
+    actionItems: withTag("action").map((text) => ({ task: text, owner: "", due: "", evidence: text })),
+    questions: withTag("question"),
+    risks: withTag("risk"),
+    followUpEmail: "",
+    meetingHealth: `${pairs.length} segments / ${highlightedPairs.length} highlights`
+  };
+}
+
+function copyMinutes() {
+  if (!state.minutes) {
+    return;
+  }
+  navigator.clipboard.writeText(buildMinutesMarkdown(state.minutes))
+    .then(() => writeNote("AI議事録をクリップボードにコピーしました。"))
+    .catch(() => writeNote("議事録をコピーできませんでした。Export Minutesを使ってください。"));
+}
+
+function downloadMinutes() {
+  if (!state.minutes) {
+    return;
+  }
+  const content = buildMinutesMarkdown(state.minutes);
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${safeFilename(currentMeetingTitle())}-minutes-${new Date().toISOString().replace(/[:.]/g, "-")}.md`;
+  link.click();
+  URL.revokeObjectURL(url);
+  writeNote("AI議事録を書き出しました。");
+}
+
+function clearMinutes() {
+  state.minutes = null;
+  if (!elements.minutesOutput) {
+    return;
+  }
+  elements.minutesStatus.textContent = "Ready";
+  elements.minutesOutput.replaceChildren("No minutes yet");
+  elements.minutesOutput.classList.add("is-empty");
+  elements.copyMinutesButton.disabled = true;
+  elements.downloadMinutesButton.disabled = true;
+}
+
+function buildMinutesMarkdown(minutes = state.minutes) {
+  if (!minutes) {
+    return "";
+  }
+
+  const lines = [
+    `# ${currentMeetingTitle()} - AI Minutes`,
+    "",
+    `- Model: ${minutes.model || state.minutesModel || "minutes"}`,
+    `- Generated: ${new Date().toISOString()}`,
+    "",
+    "## Summary",
+    "",
+    minutes.summary || "-",
+    "",
+    "## Decisions",
+    "",
+    ...markdownList(minutes.decisions),
+    "",
+    "## Action Items",
+    ""
+  ];
+
+  if (minutes.actionItems.length) {
+    for (const item of minutes.actionItems) {
+      lines.push(`- ${item.task || "-"}`);
+      lines.push(`  Owner: ${item.owner || "-"} / Due: ${item.due || "-"}`);
+      if (item.evidence) {
+        lines.push(`  Evidence: ${item.evidence}`);
+      }
+    }
+  } else {
+    lines.push("-");
+  }
+
+  lines.push(
+    "",
+    "## Questions",
+    "",
+    ...markdownList(minutes.questions),
+    "",
+    "## Risks",
+    "",
+    ...markdownList(minutes.risks),
+    "",
+    "## Meeting Health",
+    "",
+    minutes.meetingHealth || "-",
+    "",
+    "## Follow-up Email",
+    "",
+    minutes.followUpEmail || "-",
+    ""
+  );
+
+  return lines.join("\n");
+}
+
+function markdownList(items) {
+  return items.length ? items.map((item) => `- ${item}`) : ["-"];
+}
+
 function buildExportPayload() {
   const format = elements.exportFormat.value || "txt";
   const builders = {
@@ -1847,6 +2182,10 @@ function buildMeetingMarkdown() {
     }
   }
 
+  if (state.minutes) {
+    lines.push("", buildMinutesMarkdown(state.minutes).trim());
+  }
+
   lines.push(
     "",
     "## Transcript",
@@ -1909,7 +2248,7 @@ function exportSubtitleSegments() {
   return translated.length ? translated : chronologicalSegments("source");
 }
 
-function buildSessionJson() {
+function buildSessionJson({ includeMinutes = true } = {}) {
   const profile = currentTranslationProfile();
   return {
     title: currentMeetingTitle(),
@@ -1944,7 +2283,8 @@ function buildSessionJson() {
       translatedSpeaker: profile.speakers.translated,
       source: state.currentSource,
       translated: state.currentTranslated
-    }
+    },
+    minutes: includeMinutes ? state.minutes : null
   };
 }
 

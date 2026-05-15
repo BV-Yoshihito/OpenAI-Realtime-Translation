@@ -1,3 +1,4 @@
+import { DEFAULT_MINUTES_MODEL } from "../../src/minutes.js";
 import {
   DEFAULT_TRANSCRIPTION_MODEL,
   DEFAULT_TRANSLATION_MODEL,
@@ -15,6 +16,7 @@ export async function handler(event) {
     translationModel: process.env.OPENAI_TRANSLATION_MODEL || DEFAULT_TRANSLATION_MODEL,
     inputTranscriptionModel:
       process.env.OPENAI_INPUT_TRANSCRIPTION_MODEL || DEFAULT_TRANSCRIPTION_MODEL,
+    minutesModel: process.env.OPENAI_MINUTES_MODEL || DEFAULT_MINUTES_MODEL,
     languages: SUPPORTED_OUTPUT_LANGUAGES,
     qualityPresets: TRANSLATION_QUALITY_PRESETS
   });
