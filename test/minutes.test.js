@@ -34,6 +34,31 @@ test("normalizes meeting input for minutes", () => {
   assert.equal(normalized.pairs[0].translated, "ローンチを承認しました。");
 });
 
+test("normalizes transcript text fallback for minutes", () => {
+  const normalized = normalizeMeetingForMinutes({
+    sourceTranscript: "We confirmed the AI minutes flow.",
+    translatedTranscript: "AI議事録フローを確認しました。"
+  });
+
+  assert.equal(normalized.pairs.length, 1);
+  assert.equal(normalized.pairs[0].source, "We confirmed the AI minutes flow.");
+  assert.equal(normalized.pairs[0].translated, "AI議事録フローを確認しました。");
+});
+
+test("normalizes segment-only meeting logs for minutes", () => {
+  const normalized = normalizeMeetingForMinutes({
+    segments: [
+      { kind: "translated", text: "金曜日に開始します。", startSeconds: 2, speaker: "Interpreter" },
+      { kind: "source", text: "We will start on Friday.", startSeconds: 1, speaker: "Alice" }
+    ]
+  });
+
+  assert.equal(normalized.pairs.length, 1);
+  assert.equal(normalized.pairs[0].sourceSpeaker, "Alice");
+  assert.equal(normalized.pairs[0].source, "We will start on Friday.");
+  assert.equal(normalized.pairs[0].translated, "金曜日に開始します。");
+});
+
 test("extracts output text from Responses API shapes", () => {
   assert.equal(extractResponseText({ output_text: "{\"summary\":\"ok\"}" }), '{"summary":"ok"}');
   assert.equal(

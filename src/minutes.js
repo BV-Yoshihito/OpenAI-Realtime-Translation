@@ -90,15 +90,15 @@ export function buildMinutesRequestPayload({
 }
 
 export function normalizeMeetingForMinutes(meeting = {}) {
-  const pairs = Array.isArray(meeting.pairs) ? meeting.pairs : [];
+  const pairs = extractMeetingPairs(meeting);
   const normalizedPairs = pairs.slice(-MAX_PAIRS).map((pair, index) => ({
     index: Number(pair.index) || index + 1,
     time: safeText(pair.time || pair.startSeconds || "", 32),
     tags: Array.isArray(pair.tags) ? pair.tags.map((tag) => safeText(tag, 32)).slice(0, 6) : [],
     sourceSpeaker: safeText(pair.sourceSpeaker || meeting.translationProfile?.speakers?.source || "Speaker", 80),
     translatedSpeaker: safeText(pair.translatedSpeaker || meeting.translationProfile?.speakers?.translated || "Interpreter", 80),
-    source: safeText(pair.source || pair.sourceText || "", MAX_TEXT_LENGTH),
-    translated: safeText(pair.translated || pair.translatedText || "", MAX_TEXT_LENGTH)
+    source: safeText(extractText(pair.source) || pair.sourceText || "", MAX_TEXT_LENGTH),
+    translated: safeText(extractText(pair.translated) || pair.translatedText || "", MAX_TEXT_LENGTH)
   }));
 
   return {
@@ -120,6 +120,59 @@ export function normalizeMeetingForMinutes(meeting = {}) {
     },
     pairs: normalizedPairs
   };
+}
+
+function extractMeetingPairs(meeting = {}) {
+  if (Array.isArray(meeting.pairs) && meeting.pairs.length) {
+    return meeting.pairs;
+  }
+
+  const segmentPairs = buildPairsFromSegments(meeting);
+  if (segmentPairs.length) {
+    return segmentPairs;
+  }
+
+  const source = meeting.sourceTranscript || meeting.sourceText || meeting.transcript?.source || "";
+  const translated = meeting.translatedTranscript || meeting.translatedText || meeting.transcript?.translated || "";
+  if (source || translated) {
+    return [{
+      index: 1,
+      sourceSpeaker: meeting.translationProfile?.speakers?.source || "Speaker",
+      translatedSpeaker: meeting.translationProfile?.speakers?.translated || "Interpreter",
+      source,
+      translated
+    }];
+  }
+
+  return [];
+}
+
+function buildPairsFromSegments(meeting = {}) {
+  const segments = Array.isArray(meeting.segments) ? meeting.segments : [];
+  if (!segments.length) {
+    return [];
+  }
+
+  const sourceSegments = sortSegments(segments.filter((segment) => segment.kind === "source"));
+  const translatedSegments = sortSegments(segments.filter((segment) => segment.kind === "translated"));
+  const total = Math.max(sourceSegments.length, translatedSegments.length);
+
+  return Array.from({ length: total }, (_, index) => {
+    const source = sourceSegments[index] || null;
+    const translated = translatedSegments[index] || null;
+    return {
+      index: index + 1,
+      startSeconds: source?.startSeconds ?? translated?.startSeconds ?? "",
+      sourceSpeaker: source?.speaker || meeting.translationProfile?.speakers?.source || "Speaker",
+      translatedSpeaker: translated?.speaker || meeting.translationProfile?.speakers?.translated || "Interpreter",
+      source: source?.text || "",
+      translated: translated?.text || ""
+    };
+  });
+}
+
+function sortSegments(segments) {
+  return segments.slice().sort((a, b) => (Number(a.startSeconds) || 0) - (Number(b.startSeconds) || 0));
 }
 
 export async function createMeetingMinutes({
@@ -225,6 +278,13 @@ function normalizeStringArray(value, limit, maxLength) {
     return [];
   }
   return value.slice(0, limit).map((item) => safeText(item, maxLength)).filter(Boolean);
+}
+
+function extractText(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  return value?.text || "";
 }
 
 function safeText(value, maxLength) {
